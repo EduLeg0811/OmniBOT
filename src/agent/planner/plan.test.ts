@@ -10,7 +10,7 @@ function context(userText: string): AgentContext {
     host: {
       apiBase: "http://main-server.test",
       english: false,
-      vectorStoreId: "CONS_LIBRARY",
+      vectorStoreId: "CONSTECA",
       logEvent: () => undefined,
     },
     semanticSourceIds: ["lo", "dac"],

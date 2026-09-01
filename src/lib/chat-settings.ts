@@ -375,7 +375,7 @@ export function withResponseDepth<T extends ChatSettings>(
   return { ...settings, responseDepth };
 }
 
-const PUBLIC_VECTOR_STORE_LABELS: readonly string[] = ["CONSTECA", "ALLWV", "ENGLISH", "LO"];
+const PUBLIC_VECTOR_STORE_LABELS: readonly string[] = ["CONSTECA", "ENGLISH", "LO"];
 
 export const PUBLIC_VECTOR_STORES = VECTOR_STORES.filter((store) =>
   PUBLIC_VECTOR_STORE_LABELS.includes(store.label),
