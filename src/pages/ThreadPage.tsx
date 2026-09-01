@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Moon, SlidersHorizontal, Sun } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { ChatSidebar, ChatSidebarSheet } from "@/components/ChatSidebar";
 import type { SidebarTab } from "@/components/ChatSidebarContent";
 import { ChatWindow } from "@/components/ChatWindow";
+import { ProductHeader } from "@/components/ProductHeader";
 import { ConversationEvidencePanel } from "@/components/ConversationEvidencePanel";
 import { prefetchVectorStoreSources } from "@/lib/vector-store-files";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAppTheme } from "@/lib/app-theme";
+import { CONTAINER_WIDTH_CONFIG, nextContainerWidth, type ContainerWidth } from "@/lib/app-layout";
 import {
   DEFAULT_SETTINGS,
   PROFILES,
@@ -41,22 +44,12 @@ import {
   type ChatThread,
 } from "@/lib/chat-store";
 
-const CONTAINER_WIDTHS = ["5xl", "6xl", "7xl", "full"] as const;
-type ContainerWidth = (typeof CONTAINER_WIDTHS)[number];
 // Evita duas novas conversas causadas pela dupla inicialização do StrictMode em desenvolvimento.......
 let initialSessionThread: ChatThread | null = null;
 
-const CONTAINER_WIDTH_CONFIG: Record<ContainerWidth, { className: string; label: string }> = {
-  "5xl": { className: "max-w-5xl", label: "5XL" },
-  "6xl": { className: "max-w-6xl", label: "6XL" },
-  "7xl": { className: "max-w-7xl", label: "7XL" },
-  full: { className: "max-w-full", label: "Full" },
-};
-
 export function ThreadPage() {
-  const [containerWidth, setContainerWidth] = useState<ContainerWidth>("7xl");
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
-  const hasManualThemeRef = useRef(false);
+  const [containerWidth, setContainerWidth] = useState<ContainerWidth>("full");
+  const { isDark, toggleTheme } = useAppTheme();
   const [threads, setThreads] = useState<ChatThread[]>(() => {
     const loaded = loadThreads();
     const existingEmpty = loaded.find((t) => t.messages.length === 0);
@@ -109,19 +102,6 @@ export function ThreadPage() {
     setAuditLogs(loadAuditLogs(activeId));
   }, [activeId]);
 
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const syncSystemTheme = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (hasManualThemeRef.current) return;
-      const nextIsDark = event.matches;
-      document.documentElement.classList.toggle("dark", nextIsDark);
-      setIsDark(nextIsDark);
-    };
-    syncSystemTheme(media);
-    media.addEventListener("change", syncSystemTheme);
-    return () => media.removeEventListener("change", syncSystemTheme);
-  }, []);
-
   const persist = useCallback((next: ChatThread[]) => {
     setThreads(next);
     saveThreads(next);
@@ -135,8 +115,7 @@ export function ThreadPage() {
       : settingsForPublicUser(active.settings)
     : DEFAULT_SETTINGS;
   const citationsPanelAvailable =
-    effectiveSettings.retrievalMode === "corpus" ||
-    (effectiveSettings.agent.enabled && effectiveSettings.agent.presentation !== "classic");
+    effectiveSettings.agent.enabled && effectiveSettings.agent.presentation !== "classic";
 
   useEffect(() => {
     if (!citationsPanelAvailable) setCitationsPanelOpen(false);
@@ -177,18 +156,7 @@ export function ThreadPage() {
   }, [effectiveSettings.vectorStoreId]);
 
   const cycleContainerWidth = () => {
-    const currentIndex = CONTAINER_WIDTHS.indexOf(containerWidth);
-    const nextWidth = CONTAINER_WIDTHS[(currentIndex + 1) % CONTAINER_WIDTHS.length]!;
-    setContainerWidth(nextWidth);
-  };
-
-  const toggleTheme = () => {
-    hasManualThemeRef.current = true;
-    setIsDark((current) => {
-      const next = !current;
-      document.documentElement.classList.toggle("dark", next);
-      return next;
-    });
+    setContainerWidth((current) => nextContainerWidth(current));
   };
 
   const handleNew = () => {
@@ -252,8 +220,9 @@ export function ThreadPage() {
     if (!active) return;
     // Conversas abertas por versões anteriores ainda podem carregar Híbrida.
     // Ela deixa de injetar corpus e é normalizada para o caminho File Search.
+    const legacyMode = settings.retrievalMode as string;
     const compatibleSettings =
-      (settings.retrievalMode as string) === "hybrid"
+      legacyMode === "hybrid" || legacyMode === "corpus"
         ? { ...settings, retrievalMode: "standard" as const }
         : settings;
     const nextSettings = isAdmin ? compatibleSettings : settingsForPublicUser(compatibleSettings);
@@ -413,70 +382,23 @@ export function ThreadPage() {
     <div className="flex h-dvh bg-background text-foreground">
       <ChatSidebar {...sidebarProps} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center border-b border-border/70">
-          <div
-            className={cn(
-              "mx-auto flex w-full items-center gap-3 px-4 transition-all duration-300",
-              currentContainerWidth.className,
-            )}
-          >
-            <div className="lg:hidden">
-              <ChatSidebarSheet
-                {...sidebarProps}
-                open={mobileSheetOpen}
-                onOpenChange={setMobileSheetOpen}
-              />
-            </div>
-            <a
-              href="https://www.cons-ia.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Página inicial do ConsBOT"
-              title="Ir para www.cons-ia.org"
-            >
-              <img
-                src="/icon.png"
-                alt="ConsBOT"
-                className="h-12 w-12 shrink-0 object-contain transition-transform duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_40%,transparent)]"
-              />
-              <span className="flex min-w-0 items-center gap-2">
-                <h1 className="max-w-[14rem] truncate font-nunito text-[1.35rem] font-normal tracking-tight text-foreground sm:max-w-none">
-                  Cons<em className="ml-[3px] italic text-primary font-semibold">BOT</em>
-                </h1>
-
-                <span className="hidden h-4 w-px bg-border sm:inline mx-1" />
-                <span className="hidden font-nunito-sans text-[10px] uppercase tracking-[0.22em] text-muted-foreground sm:inline">
-                  Assistente de IA da Conscienciologia
-                </span>
-              </span>
-            </a>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={cycleContainerWidth}
-                title={`Largura da tela: ${currentContainerWidth.label}`}
-                aria-label={`Largura da tela: ${currentContainerWidth.label}`}
-                className="inline-flex size-8 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Maximize2 className="size-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                onClick={toggleTheme}
-                title={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
-                aria-label={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
-                className="inline-flex size-8 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                {isDark ? (
-                  <Sun className="size-4" aria-hidden="true" />
-                ) : (
-                  <Moon className="size-4" aria-hidden="true" />
-                )}
-              </button>
-            </div>
-          </div>
-        </header>
+        <ProductHeader
+          brandHref="https://www.cons-ia.org"
+          containerWidthClass={currentContainerWidth.className}
+          containerWidthLabel={currentContainerWidth.label}
+          isDark={isDark}
+          mobileNavigation={
+            <ChatSidebarSheet
+              {...sidebarProps}
+              open={mobileSheetOpen}
+              onOpenChange={setMobileSheetOpen}
+            />
+          }
+          onCycleContainerWidth={cycleContainerWidth}
+          onToggleTheme={toggleTheme}
+          product="BOT"
+          subtitle="Assistente de IA da Conscienciologia"
+        />
 
         <div className="w-full shrink-0 pt-3 pb-1">
           <div

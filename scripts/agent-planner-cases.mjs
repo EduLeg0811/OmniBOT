@@ -1,6 +1,6 @@
 /** Casos da suíte do planejador.
  *
- * Os grupos 1 a 4 são os exemplos das fichas de docs/agent-rules.docx — as
+ * Os grupos 1 a 8 são os exemplos das fichas de docs/agent-rules.docx — as
  * mesmas frases que a suíte determinística usa, para os dois caminhos serem
  * medidos contra o mesmo padrão. `expect` lista as intenções que DEVEM sair;
  * lista vazia significa «nenhuma ação».
@@ -148,6 +148,41 @@ export const CASES = [
   { ficha: 4, q: "Liste sinônimos de “Pensene”", expect: [] },
   { ficha: 4, q: "Faça um cotejo entre “Cosmoética” e “Paradireito”", expect: [] },
   { ficha: 4, q: "Qual a diferença entre “Cosmovisão” e “Cosmoconsciência”", expect: [] },
+
+  // ── Ficha 5 · bibliografia_verbetes ──────────────────────────────────────
+  { ficha: 5, q: "Como citar o verbete Sursum Conscientia?", expect: ["bibliografia_verbetes"] },
+  { ficha: 5, q: "Bibliografia dos verbetes da Enciclopédia", expect: ["bibliografia_verbetes"] },
+  { ficha: 5, q: "Resuma o verbete Sursum Conscientia", expect: [] },
+
+  // ── Ficha 6 · encyclossapiens ────────────────────────────────────────────
+  {
+    ficha: 6,
+    q: "Quais são os critérios para escrever e submeter um verbete?",
+    expect: ["encyclossapiens"],
+    mode: "full",
+  },
+  { ficha: 6, q: "Abra o site da Encyclossapiens", expect: ["encyclossapiens"] },
+  { ficha: 6, q: "Busque a palavra tenepes nos verbetes", expect: ["search_verbete"] },
+
+  // ── Ficha 7 · acervo_icge ────────────────────────────────────────────────
+  {
+    ficha: 7,
+    q: "Quais instituições conscienciocêntricas estão catalogadas pelo ICGE?",
+    expect: ["acervo_icge"],
+    mode: "full",
+  },
+  {
+    ficha: 7,
+    q: "Onde encontro o arquivo histórico e os vídeos da CCCI?",
+    expect: ["acervo_icge"],
+    mode: "full",
+  },
+  { ficha: 7, q: "Explique o conceito de holoteca", expect: [] },
+
+  // ── Ficha 8 · list_sources ───────────────────────────────────────────────
+  { ficha: 8, q: "Quais fontes estão carregadas nesta conversa?", expect: ["list_sources"] },
+  { ficha: 8, q: "Liste os arquivos disponíveis para consulta", expect: ["list_sources"] },
+  { ficha: 8, q: "Explique o conteúdo das fontes carregadas", expect: [] },
 
   // ── Geral · uso comum, nenhuma ação esperada ─────────────────────────────
   { ficha: "geral", q: "Como iniciar a prática da tenepes?", expect: [] },

@@ -3,7 +3,6 @@ import {
   AGENT_ANSWER_MAX,
   AGENT_CLASSIFIER_MODEL,
   AGENT_CLASSIFIER_REASONING,
-  AGENT_CONFIDENCE_DEFAULT,
   AGENT_CONFIDENCE_HIGH,
   AGENT_CONFIDENCE_MEDIUM,
   AGENT_PLANNER_TIMEOUT_MS,
@@ -74,7 +73,6 @@ function asRoute(value: unknown): AgentRoute {
 }
 
 function confidenceOf(value: unknown): number | null {
-  if (value === undefined) return AGENT_CONFIDENCE_DEFAULT;
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
     ? value
     : null;
@@ -115,13 +113,19 @@ function classifierMessage(ctx: AgentContext): string {
   context.push(
     english
       ? `Source state: File Search ${ctx.hasFileSearch ? "available" : "unavailable"}; semantic corpus ${
-          ctx.semanticSourceIds?.length ? ctx.semanticSourceIds.join(", ") : "has no selected sources"
+          ctx.semanticSourceIds?.length
+            ? ctx.semanticSourceIds.join(", ")
+            : "has no selected sources"
         }.`
       : `Estado das fontes: File Search ${ctx.hasFileSearch ? "disponível" : "indisponível"}; corpus semântico ${
-          ctx.semanticSourceIds?.length ? ctx.semanticSourceIds.join(", ") : "sem fontes selecionadas"
+          ctx.semanticSourceIds?.length
+            ? ctx.semanticSourceIds.join(", ")
+            : "sem fontes selecionadas"
         }.`,
   );
-  context.push(`${english ? "Current user question" : "Pergunta atual do usuário"}:\n${ctx.userText.trim()}`);
+  context.push(
+    `${english ? "Current user question" : "Pergunta atual do usuário"}:\n${ctx.userText.trim()}`,
+  );
   return context.join("\n\n");
 }
 
@@ -258,7 +262,7 @@ async function requestPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED
       }
       if (confidence < AGENT_CONFIDENCE_HIGH) {
         return {
-          actions: [],
+          actions,
           route: "full",
           answer: "",
           confidence,

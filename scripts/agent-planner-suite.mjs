@@ -52,9 +52,10 @@ async function loadPlanner() {
     entry,
     [
       'export { agentInstructionsFor } from "@/agent/planner/prompt";',
+      'export { presentationInstructionFor } from "@/agent/planner/prompt";',
       'export { AGENT_PLANNER_SCHEMA } from "@/agent/planner/schema";',
       'export { AGENT_TOOLS } from "@/agent/tools/registry";',
-      'export { isSmallTalk } from "@/agent/planner/plan";',
+      'export { AGENT_CONFIDENCE_HIGH, AGENT_CONFIDENCE_MEDIUM } from "@/agent/config";',
     ].join("\n"),
   );
 
@@ -83,7 +84,7 @@ async function loadPlanner() {
   return { planner, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
-async function classify(instructions, schema, question, isSmallTalk) {
+async function classify(planner, instructions, schema, question) {
   const response = await fetch(`${API_BASE}/api/llm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -106,21 +107,46 @@ async function classify(instructions, schema, question, isSmallTalk) {
 
   const { content } = await response.json();
   const parsed = JSON.parse(content ?? "{}");
-  const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
-
-  // A MESMA trava que `planner/plan.ts` aplica antes de aceitar um `direct`:
-  // sem ação e sem ser saudação, a resposta vai ao modelo completo, diga o
-  // classificador o que disser. Medir o `answer_mode` cru sem ela reportava
-  // como «engolida» uma pergunta que o app manda para o modelo completo.
+  const actions = Array.isArray(parsed.actions) ? parsed.actions.slice(0, 2) : [];
   const answer = String(parsed.answer ?? "").trim();
-  const mayAnswer = actions.length > 0 || isSmallTalk(question);
-  const mode = parsed.answer_mode === "direct" && answer && mayAnswer ? "direct" : "full";
+  const proposedRoute = ["direct", "full", "corpus", "clarify"].includes(parsed.route)
+    ? parsed.route
+    : "full";
+  const confidence =
+    typeof parsed.confidence === "number" &&
+    Number.isFinite(parsed.confidence) &&
+    parsed.confidence >= 0 &&
+    parsed.confidence <= 1
+      ? parsed.confidence
+      : null;
+
+  // Espelha a normalização efetiva do cliente no modo Clássico, escolhido pela
+  // suíte porque é nele que ações externas aparecem como pills. Ausência ou
+  // baixa confiança nunca pode suprimir o modelo principal.
+  let mode = "full";
+  if (confidence !== null && confidence >= planner.AGENT_CONFIDENCE_MEDIUM) {
+    if (
+      proposedRoute === "direct" &&
+      confidence >= planner.AGENT_CONFIDENCE_HIGH &&
+      (actions.length > 0 || answer)
+    ) {
+      mode = "direct";
+    } else if (proposedRoute === "clarify" && answer) mode = "clarify";
+    else if (
+      proposedRoute === "corpus" &&
+      confidence >= planner.AGENT_CONFIDENCE_HIGH &&
+      actions.length > 0
+    ) {
+      mode = "direct";
+    }
+  }
 
   return {
     intents: actions.map((a) => a.intent).filter(Boolean),
-    delivery: parsed.delivery ?? "—",
     mode,
-    rawMode: parsed.answer_mode ?? "—",
+    proposedRoute,
+    confidence,
+    reason: parsed.reason ?? "—",
     answer,
     args: actions.map((a) => ({ term: a.term, field: a.field || "", book: a.book || "" })),
   };
@@ -156,7 +182,10 @@ async function main() {
   }
 
   const { planner, cleanup } = await loadPlanner();
-  const instructions = planner.agentInstructionsFor(false);
+  const instructions = [
+    planner.agentInstructionsFor(false),
+    planner.presentationInstructionFor(false, "classic"),
+  ].join("\n\n");
   const schema = planner.AGENT_PLANNER_SCHEMA;
 
   const cases = FICHA ? CASES.filter((c) => String(c.ficha) === FICHA) : CASES;
@@ -170,9 +199,15 @@ async function main() {
     const runs = [];
     for (let i = 0; i < RUNS; i += 1) {
       try {
-        runs.push(await classify(instructions, schema, testCase.q, planner.isSmallTalk));
+        runs.push(await classify(planner, instructions, schema, testCase.q));
       } catch (error) {
-        runs.push({ intents: ["<erro>"], delivery: "—", args: [], error: String(error.message) });
+        runs.push({
+          intents: ["<erro>"],
+          mode: "erro",
+          proposedRoute: "—",
+          args: [],
+          error: String(error.message),
+        });
       }
     }
 
@@ -195,8 +230,8 @@ async function main() {
 
     const status = hits === RUNS ? "PASS" : hits === 0 ? "FAIL" : "VARIA";
     const observed = runs[0].intents.join("+") || "—";
-    const deliveries = [...new Set(runs.map((r) => r.delivery))].join("/");
     const modes = [...new Set(runs.map((r) => r.mode))].join("/");
+    const proposed = [...new Set(runs.map((r) => r.proposedRoute))].join("/");
     const flags = [];
 
     // Parâmetro esperado que não veio é falha silenciosa: o botão aparece,
@@ -214,7 +249,7 @@ async function main() {
     }
 
     console.log(
-      `${status.padEnd(6)}${`${hits}/${RUNS}`.padEnd(5)}${observed.padEnd(30)}${modes.padEnd(13)}${deliveries.padEnd(13)}${flags.join(" ")}  ${testCase.q}`,
+      `${status.padEnd(6)}${`${hits}/${RUNS}`.padEnd(5)}${observed.padEnd(30)}${modes.padEnd(12)}${proposed.padEnd(12)}${flags.join(" ")}  ${testCase.q}`,
     );
 
     if (status !== "PASS")
@@ -229,7 +264,7 @@ async function main() {
   console.log(`\n${"═".repeat(64)}`);
   console.log(`${stable} estáveis · ${partial} instáveis · ${failed} falhas   (${elapsed}s)`);
 
-  for (const ficha of [1, 2, 3, 4, "geral"]) {
+  for (const ficha of [...new Set(rows.map((row) => row.testCase.ficha))]) {
     const group = rows.filter((r) => r.testCase.ficha === ficha);
     if (group.length === 0) continue;
     const ok = group.filter((r) => r.hits === RUNS).length;
@@ -246,31 +281,17 @@ async function main() {
   const desperdicio = rows.filter((r) => r.wanted === "direct" && r.modeHits < RUNS);
   const modoOk = rows.filter((r) => r.modeHits === RUNS).length;
 
-  console.log(`\nPorteiro: ${modoOk}/${rows.length} estáveis no answer_mode esperado`);
+  console.log(`\nPorteiro: ${modoOk}/${rows.length} estáveis na rota efetiva esperada`);
   console.log(`  engolidas (direct onde precisava de fonte): ${engolidas.length}`);
   for (const row of engolidas) console.log(`     ${row.testCase.q}`);
   console.log(`  desperdício (full onde o pill bastava): ${desperdicio.length}`);
   for (const row of desperdicio) console.log(`     ${row.testCase.q}`);
 
-  /* ── risco de latência: com que frequência o planejador pede `context` ──
-   * Só importa no modo «Alimentar LLM», onde `context` significa buscar
-   * ANTES de responder. Pedir context onde não há ação é inofensivo; pedir em
-   * pergunta comum COM ação é o que atrasa a conversa à toa. */
-  const wanted = rows.flatMap((r) => r.runs.filter((run) => run.intents.length > 0));
-  const asContext = wanted.filter((run) => run.delivery === "context");
   const noise = rows
     .filter((r) => r.testCase.expect.length === 0)
     .flatMap((r) => r.runs)
     .filter((run) => run.intents.length > 0);
 
-  console.log(`\nEntrega, quando há ação:`);
-  for (const kind of ["card", "context"]) {
-    const n = wanted.filter((run) => run.delivery === kind).length;
-    console.log(`  ${kind.padEnd(10)} ${String(n).padStart(3)}  ${pct(n, wanted.length)}`);
-  }
-  console.log(
-    `  → ${pct(asContext.length, wanted.length)} das ações atrasariam a resposta no modo «Alimentar LLM»`,
-  );
   console.log(
     `\nAções indevidas (casos que não deviam disparar): ${noise.length} em ${rows.filter((r) => r.testCase.expect.length === 0).length * RUNS} execuções`,
   );

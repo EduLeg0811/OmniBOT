@@ -166,6 +166,68 @@
   --shadow-soft: 0 12px 32px -18px oklch(0.04 0.01 165 / 0.72);
 }
 
+/* ConsTECA keeps the same semantic system and shifts its chromatic center
+ * from botanical green to archival blue. Components continue using tokens,
+ * so the product mode never leaks hard-coded colors into the chat. */
+:root[data-product-mode="search"] {
+  --foreground: oklch(0.27 0.035 246);
+  --card-foreground: oklch(0.27 0.035 246);
+  --popover-foreground: oklch(0.27 0.035 246);
+  --primary: oklch(0.56 0.11 244);
+  --primary-foreground: oklch(0.99 0.004 240);
+  --secondary: oklch(0.95 0.03 238);
+  --secondary-foreground: oklch(0.31 0.045 246);
+  --muted: oklch(0.96 0.018 238);
+  --muted-foreground: oklch(0.58 0.03 246);
+  --accent: oklch(0.91 0.05 210);
+  --accent-foreground: oklch(0.27 0.05 238);
+  --border: oklch(0.9 0.012 238);
+  --input: oklch(0.9 0.012 238);
+  --ring: oklch(0.52 0.1 244);
+  --sidebar: oklch(0.975 0.008 238);
+  --sidebar-foreground: oklch(0.29 0.03 246);
+  --sidebar-primary: oklch(0.52 0.1 244);
+  --sidebar-primary-foreground: oklch(0.99 0.004 240);
+  --sidebar-accent: oklch(0.95 0.018 238);
+  --sidebar-accent-foreground: oklch(0.29 0.03 246);
+  --sidebar-border: oklch(0.89 0.012 238);
+  --sidebar-ring: oklch(0.52 0.1 244);
+  --gradient-surface: linear-gradient(165deg, oklch(0.985 0.018 238), oklch(0.97 0.03 218) 56%, oklch(0.98 0.022 260));
+  --gradient-brand: linear-gradient(120deg, oklch(0.7 0.08 244), oklch(0.77 0.06 210));
+  --shadow-soft: 0 14px 36px -22px oklch(0.42 0.08 244 / 0.42);
+}
+
+.dark[data-product-mode="search"] {
+  --background: oklch(0.185 0.024 246);
+  --foreground: oklch(0.94 0.014 238);
+  --card: oklch(0.23 0.026 246);
+  --card-foreground: oklch(0.94 0.014 238);
+  --popover: oklch(0.25 0.028 246);
+  --popover-foreground: oklch(0.94 0.014 238);
+  --primary: oklch(0.74 0.09 238);
+  --primary-foreground: oklch(0.17 0.03 246);
+  --secondary: oklch(0.28 0.03 246);
+  --secondary-foreground: oklch(0.93 0.014 238);
+  --muted: oklch(0.27 0.025 246);
+  --muted-foreground: oklch(0.72 0.022 238);
+  --accent: oklch(0.32 0.045 220);
+  --accent-foreground: oklch(0.96 0.012 225);
+  --border: oklch(0.39 0.027 246 / 0.72);
+  --input: oklch(0.36 0.027 246);
+  --ring: oklch(0.74 0.09 238);
+  --sidebar: oklch(0.21 0.023 246);
+  --sidebar-foreground: oklch(0.94 0.014 238);
+  --sidebar-primary: oklch(0.74 0.09 238);
+  --sidebar-primary-foreground: oklch(0.17 0.03 246);
+  --sidebar-accent: oklch(0.29 0.033 246);
+  --sidebar-accent-foreground: oklch(0.95 0.014 238);
+  --sidebar-border: oklch(0.39 0.027 246 / 0.72);
+  --sidebar-ring: oklch(0.74 0.09 238);
+  --gradient-surface: linear-gradient(165deg, oklch(0.23 0.028 246), oklch(0.205 0.032 225) 58%, oklch(0.215 0.03 265));
+  --gradient-brand: linear-gradient(120deg, oklch(0.66 0.09 244), oklch(0.69 0.07 210));
+  --shadow-soft: 0 15px 38px -22px oklch(0.03 0.025 246 / 0.78);
+}
+
 :root {
   color-scheme: light;
 }
@@ -183,7 +245,54 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    transition: background-color 200ms ease, color 200ms ease;
+    transition: background-color 280ms ease, color 280ms ease;
+  }
+}
+
+.consteca-shell {
+  transition: background-color 280ms ease, color 280ms ease;
+  animation: consteca-reveal 360ms ease-out both;
+}
+
+.consteca-hero {
+  background:
+    radial-gradient(circle at 92% 18%, color-mix(in oklch, var(--primary) 15%, transparent) 0, transparent 28%),
+    radial-gradient(circle at 6% 105%, color-mix(in oklch, var(--accent) 48%, transparent) 0, transparent 38%),
+    var(--gradient-surface);
+}
+
+.consteca-hero::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: radial-gradient(circle, color-mix(in oklch, var(--primary) 45%, transparent) 0.7px, transparent 0.8px);
+  background-size: 14px 14px;
+  mask-image: linear-gradient(90deg, black, transparent 70%);
+}
+
+.consteca-orbit {
+  position: absolute;
+  right: -1.25rem;
+  top: -1.75rem;
+  color: color-mix(in oklch, var(--primary) 13%, transparent);
+  transform: rotate(-12deg);
+}
+
+@keyframes consteca-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .consteca-shell,
+  .consteca-shell * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

@@ -54,22 +54,22 @@ describe("chat settings", () => {
     expect(settings.semanticSourceIds).toEqual([]);
   });
 
-  it("também bloqueia Recupera Corpus para usuário público", () => {
+  it("normaliza o modo manual legado para busca padrão", () => {
     const settings = settingsForPublicUser({
       ...DEFAULT_SETTINGS,
-      retrievalMode: "corpus",
+      retrievalMode: "corpus" as never,
       semanticSourceIds: ["lo"],
     });
     expect(settings.retrievalMode).toBe("standard");
     expect(settings.semanticSourceIds).toEqual([]);
   });
 
-  it("preserva a recuperação documental ao trocar de perfil", () => {
+  it("migra o modo manual legado ao trocar de perfil e preserva as fontes do Agent", () => {
     const settings = withProfile(
-      { ...DEFAULT_SETTINGS, retrievalMode: "corpus", semanticSourceIds: ["lo"] },
+      { ...DEFAULT_SETTINGS, retrievalMode: "corpus" as never, semanticSourceIds: ["lo"] },
       "preceptor",
     );
-    expect(settings.retrievalMode).toBe("corpus");
+    expect(settings.retrievalMode).toBe("standard");
     expect(settings.semanticSourceIds).toEqual(["lo"]);
   });
 
@@ -77,25 +77,24 @@ describe("chat settings", () => {
     expect(normalizeAgentSettings({ enabled: true, prompt: "" }).presentation).toBe("citations");
   });
 
-  it("acrescenta 400 palavras à meta quando o formato for conscienciological", () => {
-    expect(CONSCIENTIOLOGICAL_WORD_OFFSET).toBe(400);
+  it("acrescenta 200 palavras à meta quando o formato for conscienciological", () => {
+    expect(CONSCIENTIOLOGICAL_WORD_OFFSET).toBe(200);
 
     const chatGptSettings = {
       ...DEFAULT_SETTINGS,
       responseFormat: "chatgpt" as const,
       responseDepth: "synthetic" as const,
     };
-    expect(targetWordsForSettings(chatGptSettings)).toBe(500);
+    expect(targetWordsForSettings(chatGptSettings)).toBe(400);
 
     const consSettings = {
       ...DEFAULT_SETTINGS,
       responseFormat: "conscienciological" as const,
       responseDepth: "synthetic" as const,
     };
-    expect(targetWordsForSettings(consSettings)).toBe(900);
+    expect(targetWordsForSettings(consSettings)).toBe(600);
 
     const prompt = buildSystemPrompt(consSettings);
-    expect(prompt).toContain("cerca de 900 palavras");
+    expect(prompt).toContain("cerca de 600 palavras");
   });
 });
-

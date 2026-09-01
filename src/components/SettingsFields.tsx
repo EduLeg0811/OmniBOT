@@ -7,7 +7,6 @@ import {
   FileSearch,
   Gauge,
   LoaderCircle,
-  Quote,
   RefreshCw,
   SlidersHorizontal,
   UserRound,
@@ -137,11 +136,9 @@ function SemanticSourceSettings({
   }, [draft, indexes, setDraft]);
 
   const selectedIds = draft.semanticSourceIds ?? [];
-  const semanticUnavailable = loading || Boolean(error) || !indexes?.length;
-  const isManualCorpus = (draft.retrievalMode ?? "standard") === "corpus";
-  const operationMode = isManualCorpus ? "corpus" : draft.agent.enabled ? "agent" : "standard";
+  const operationMode = draft.agent.enabled ? "agent" : "standard";
   const isClassicAgent = operationMode === "agent" && draft.agent.presentation === "classic";
-  const showSources = operationMode === "corpus" || (operationMode === "agent" && !isClassicAgent);
+  const showSources = operationMode === "agent" && !isClassicAgent;
   const toggleSource = (id: string, checked: boolean) => {
     if (!checked && selectedIds.length === 1 && selectedIds[0] === id) return;
     const next = checked
@@ -169,11 +166,9 @@ function SemanticSourceSettings({
           [
             ["standard", "Busca padrão", "LLM + File Search", FileSearch],
             ["agent", "Modo Agent", "Luna roteia o turno", Bot],
-            ["corpus", "Recupera Corpus", "Somente trechos", Quote],
           ] as const
         ).map(([mode, label, description, Icon]) => {
           const selected = operationMode === mode;
-          const disabled = mode === "corpus" && semanticUnavailable;
           return (
             <button
               className={
@@ -181,15 +176,13 @@ function SemanticSourceSettings({
                   ? "rounded-xl border border-primary/70 bg-card px-3 py-3 text-left shadow-[0_2px_10px_-6px_oklch(0.3_0.03_155/0.35)]"
                   : "rounded-xl border border-border/70 bg-card/80 px-3 py-3 text-left transition-colors hover:border-border hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"
               }
-              disabled={disabled}
               key={mode}
               type="button"
               onClick={() =>
                 setDraft({
                   ...draft,
-                  retrievalMode: mode === "corpus" ? "corpus" : "standard",
+                  retrievalMode: "standard",
                   agent: { ...draft.agent, enabled: mode === "agent" },
-                  semanticSourceIds: mode === "corpus" ? selectedIds : draft.semanticSourceIds,
                 })
               }
             >
@@ -203,29 +196,16 @@ function SemanticSourceSettings({
               <span className="mt-2 block text-[9px] font-medium uppercase tracking-wide text-muted-foreground/75">
                 {mode === "standard"
                   ? "Pergunta → LLM"
-                  : mode === "agent"
-                    ? "Pergunta → Luna → rota"
-                    : "Pergunta → Corpus → Citações"}
+                  : "Pergunta → Luna → rota"}
               </span>
             </button>
           );
         })}
       </div>
 
-      <div
-        className={
-          isManualCorpus
-            ? "rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5"
-            : "rounded-xl border border-border/60 bg-card/60 px-3 py-2.5"
-        }
-      >
+      <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
         <p className="text-[10px] leading-relaxed text-muted-foreground">
-          {operationMode === "corpus" ? (
-            <>
-              <span className="font-medium text-foreground">Modo manual ativo.</span> Luna, Terra e
-              File Search não são acionados nesta conversa.
-            </>
-          ) : operationMode === "agent" ? (
+          {operationMode === "agent" ? (
             <>
               <span className="font-medium text-foreground">Roteamento ativo.</span>{" "}
               {isClassicAgent
@@ -293,14 +273,14 @@ function SemanticSourceSettings({
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
             <div>
               <p className="text-[11px] font-medium text-foreground">
-                Limite de citações do corpus
+                Limite de citações do Agent
               </p>
               <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                Máximo de trechos recuperados e exibidos no painel (1–200).
+                Máximo de trechos recuperados e exibidos quando Luna consultar o corpus (1–200).
               </p>
             </div>
             <Input
-              aria-label="Limite de citações do corpus"
+              aria-label="Limite de citações do Agent"
               className="h-8 w-16 bg-card px-2 text-right text-xs tabular-nums"
               max={SEMANTIC_CONTEXT_RESULTS_MAX}
               min={SEMANTIC_CONTEXT_RESULTS_MIN}
@@ -684,7 +664,7 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
         <>
           <SemanticSourceSettings draft={draft} setDraft={setDraft} />
 
-          {(draft.retrievalMode ?? "standard") === "standard" && draft.agent.enabled ? (
+          {draft.agent.enabled ? (
             <AgentSettingsSection
               value={draft.agent}
               onChange={(agent) => setDraft({ ...draft, agent })}

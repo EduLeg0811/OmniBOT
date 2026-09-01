@@ -574,37 +574,39 @@ export function ChatSidebarContent({
         </TooltipProvider>
       ) : null}
 
-      <div className="border-t border-sidebar-border bg-sidebar px-3 py-2 space-y-0.5">
-        <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
-          Acesso rápido
-        </p>
-        {SIDEBAR_QUICK_LINKS.map(({ title, url, icon: Icon, color }) => (
-          <Button
-            key={title}
-            variant="ghost"
-            size="sm"
-            asChild
-            className="group w-full justify-start gap-2 text-xs font-medium text-foreground/90 hover:bg-sidebar-accent hover:text-foreground active:bg-sidebar-accent"
-          >
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={title}
-              onClick={() => onQuickAccess({ title, url })}
+      {tab === "chats" ? (
+        <div className="space-y-0.5 border-t border-sidebar-border bg-sidebar px-3 py-2">
+          <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+            Acesso rápido
+          </p>
+          {SIDEBAR_QUICK_LINKS.map(({ title, url, icon: Icon, color }) => (
+            <Button
+              key={title}
+              variant="ghost"
+              size="sm"
+              asChild
+              className="group w-full justify-start gap-2 text-xs font-medium text-foreground/90 hover:bg-sidebar-accent hover:text-foreground active:bg-sidebar-accent"
             >
-              <Icon
-                className={cn(
-                  "size-4 shrink-0 transition-transform duration-150 group-hover:scale-110",
-                  color,
-                )}
-              />
-              <span className="truncate">{title}</span>
-              <ExternalLink className="ml-auto size-3 shrink-0 opacity-30 transition-opacity duration-150 group-hover:opacity-75" />
-            </a>
-          </Button>
-        ))}
-      </div>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={title}
+                onClick={() => onQuickAccess({ title, url })}
+              >
+                <Icon
+                  className={cn(
+                    "size-4 shrink-0 transition-transform duration-150 group-hover:scale-110",
+                    color,
+                  )}
+                />
+                <span className="truncate">{title}</span>
+                <ExternalLink className="ml-auto size-3 shrink-0 opacity-30 transition-opacity duration-150 group-hover:opacity-75" />
+              </a>
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="border-t border-sidebar-border bg-sidebar px-3 py-3">
         <Button
@@ -632,7 +634,12 @@ function hasFileSearchExecution(value: unknown): boolean {
   return Object.values(record).some(hasFileSearchExecution);
 }
 
-type AgentAuditDecision = { route: string; origin?: string; confidence?: number; actionCount?: number };
+type AgentAuditDecision = {
+  route: string;
+  origin?: string;
+  confidence?: number;
+  actionCount?: number;
+};
 
 function agentDecisionFromLog(log: AuditLog): AgentAuditDecision | null {
   const request = log.request;
@@ -682,7 +689,10 @@ function AgentAuditSummary({ logs }: { logs: AuditLog[] }) {
     return result;
   }, {});
   const fallbacks = decisions.filter((decision) => decision.origin === "fallback").length;
-  const availablePills = decisions.reduce((total, decision) => total + (decision.actionCount ?? 0), 0);
+  const availablePills = decisions.reduce(
+    (total, decision) => total + (decision.actionCount ?? 0),
+    0,
+  );
   const pillClicks = logs.filter((log) => {
     const request = log.request;
     return (
