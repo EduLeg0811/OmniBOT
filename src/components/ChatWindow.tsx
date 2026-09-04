@@ -98,6 +98,15 @@ function pillsForAudit(actions: AgentAction[]): AgentPillMetadata[] {
   }));
 }
 
+function agentPillsAuditMeta(agentPills: AgentPillMetadata[] | undefined) {
+  if (!agentPills || !agentPills.length) return {};
+  return {
+    agent_pills: agentPills,
+    pills: agentPills.map((p) => p.label).join(", "),
+    pills_count: agentPills.length,
+  };
+}
+
 function agentAuditMeta(triage: AgentTriage | null) {
   if (!triage || triage.origin === "bypass") return {};
   return {
@@ -313,12 +322,6 @@ function messageHasVisibleContent(message: ConsBotUIMessage): boolean {
   );
 }
 
-function getFirstLines(text: string, maxLines = 10): string {
-  const lines = text.split("\n");
-  if (lines.length <= maxLines) return text.trim();
-  return lines.slice(0, maxLines).join("\n").trim();
-}
-
 function newMessageId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -524,6 +527,7 @@ export function ChatWindow({
       },
       onError: (error) => {
         if (pendingAccessLogRef.current) {
+          const agentPills = pendingAgentPillsRef.current;
           logFeatureAccess({
             module: "consbot",
             action: pendingAccessLogRef.current.action,
@@ -533,6 +537,7 @@ export function ChatWindow({
             meta: {
               ...pendingAccessLogRef.current.meta,
               response: `[Erro: ${error.message || "Não foi possível responder"}]`,
+              ...agentPillsAuditMeta(agentPills),
             },
           });
           pendingAccessLogRef.current = null;
@@ -660,9 +665,9 @@ export function ChatWindow({
     // o texto dela alinharia a pergunta desta rodada com a resposta da anterior.
     const isFresh = Boolean(lastAssistant) && lastAssistant?.id !== baselineAssistantIdRef.current;
     const assistantText = isFresh && lastAssistant ? getMessageText(lastAssistant) : "";
-    const first10Lines = assistantText ? getFirstLines(assistantText, 10) : undefined;
     streamStartedRef.current = false;
     if (pendingAccessLogRef.current) {
+      const agentPills = pendingAgentPillsRef.current;
       logFeatureAccess({
         module: "consbot",
         action: pendingAccessLogRef.current.action,
@@ -671,7 +676,8 @@ export function ChatWindow({
         chat_id: pendingAccessLogRef.current.chat_id,
         meta: {
           ...pendingAccessLogRef.current.meta,
-          ...(first10Lines ? { response: first10Lines } : {}),
+          ...(assistantText ? { response: assistantText } : {}),
+          ...agentPillsAuditMeta(agentPills),
         },
       });
       pendingAccessLogRef.current = null;
@@ -718,6 +724,7 @@ export function ChatWindow({
 
   const submit = useCallback(
     async (text: string) => {
+      pendingAgentPillsRef.current = [];
       const value = text.trim();
       // `isBusy` só passa a valer quando o sendMessage vai à rede, e antes
       // dele há uma triagem que pode levar segundos. Sem esta trava, um
@@ -941,7 +948,8 @@ export function ChatWindow({
               agent_route: manualCorpus ? "manual_corpus" : useCorpus ? "corpus" : "direct",
               ...agentAuditMeta(triage),
               ...semanticAuditMeta(semanticContext),
-              response: getFirstLines(directAnswer, 10),
+              response: directAnswer,
+              ...agentPillsAuditMeta(agentPills),
             },
           });
           const directMessage: ConsBotUIMessage = {
@@ -965,6 +973,7 @@ export function ChatWindow({
             directMessage,
           ]);
           pendingEchoIdRef.current = null;
+          pendingAgentPillsRef.current = [];
 
           return;
         }
@@ -1003,6 +1012,7 @@ export function ChatWindow({
           retrieval_mode: current.retrievalMode,
           ...agentAuditMeta(triage),
           ...semanticAuditMeta(semanticContext),
+          ...agentPillsAuditMeta(agentPills),
         };
 
         // O caminho completo passa pelo transporte, que insere a mensagem do
@@ -1299,9 +1309,8 @@ export function ChatWindow({
     if (pendingAccessLogRef.current) {
       const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
       const assistantText = lastAssistant ? getMessageText(lastAssistant) : "";
-      const first10Lines = assistantText
-        ? getFirstLines(assistantText, 10)
-        : "[Resposta interrompida pelo usuário]";
+      const responseText = assistantText || "[Resposta interrompida pelo usuário]";
+      const agentPills = pendingAgentPillsRef.current;
       logFeatureAccess({
         module: "consbot",
         action: pendingAccessLogRef.current.action,
@@ -1310,11 +1319,13 @@ export function ChatWindow({
         chat_id: pendingAccessLogRef.current.chat_id,
         meta: {
           ...pendingAccessLogRef.current.meta,
-          response: first10Lines,
+          response: responseText,
+          ...agentPillsAuditMeta(agentPills),
         },
       });
       pendingAccessLogRef.current = null;
     }
+    pendingAgentPillsRef.current = [];
     if (pendingAuditId.current) {
       onAuditComplete(
         pendingAuditId.current,
