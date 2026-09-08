@@ -27,9 +27,13 @@
 export { AgentActions } from "@/agent/ui/AgentActions";
 export { AgentStatus } from "@/agent/ui/AgentStatus";
 export { triageAgent, type AgentTriage } from "@/agent/planner/triage";
+export { buildAgentResponseContext } from "@/agent/planner/plan";
 export { AgentSettingsSection } from "@/agent/ui/AgentSettingsSection";
-export { executeAgentAction } from "@/agent/tools/registry";
-export { sourceListAnswer, sourceListErrorAnswer } from "@/agent/tools/list-sources";
+export {
+  executeAgentAction,
+  sourceListAnswer,
+  sourceListErrorAnswer,
+} from "@/agent/tools/list-sources";
 export {
   AGENT_FOLLOW_UP_SCHEMA,
   agentFollowUpPrompt,
@@ -43,4 +47,4 @@ export {
   type AgentSettings,
 } from "@/agent/settings";
 export type { AgentEvent, AgentHost } from "@/agent/host";
-export type { AgentAction, AgentPlanOrigin, AgentRoute } from "@/agent/types";
+export type { AgentAction, AgentPlanOrigin, AgentResponseMode, AgentRoute } from "@/agent/types";

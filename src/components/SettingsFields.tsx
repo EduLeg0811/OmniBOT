@@ -703,14 +703,12 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
         <>
           <SemanticSourceSettings draft={draft} setDraft={setDraft} />
 
-          {draft.agent.enabled ? (
-            <AgentSettingsSection
-              value={draft.agent}
-              onChange={(agent) => setDraft({ ...draft, agent })}
-              isAdmin={isAdmin}
-              english={isEnglishVectorStore(draft.vectorStoreId)}
-            />
-          ) : null}
+          <AgentSettingsSection
+            value={draft.agent}
+            onChange={(agent) => setDraft({ ...draft, agent })}
+            isAdmin={isAdmin}
+            english={isEnglishVectorStore(draft.vectorStoreId)}
+          />
         </>
       ) : null}
     </div>

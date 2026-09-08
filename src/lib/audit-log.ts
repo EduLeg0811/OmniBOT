@@ -1,6 +1,12 @@
 import type { UIMessage } from "ai";
 
-import type { AgentAction, AgentPlanOrigin, AgentPresentation, AgentRoute } from "@/agent";
+import type {
+  AgentAction,
+  AgentPlanOrigin,
+  AgentPresentation,
+  AgentResponseMode,
+  AgentRoute,
+} from "@/agent";
 
 export type AuditLog = {
   id: string;
@@ -67,6 +73,10 @@ export type AgentPillMetadata = {
   id: string;
   label: string;
   link: string;
+  confidence?: number;
+  position?: number;
+  service?: string;
+  destination?: string;
   parameters?: Record<string, unknown>;
 };
 
@@ -85,12 +95,16 @@ export type ConsBotMessageMetadata = {
   agentClassifier?: AgentClassifierTrace;
   agentPlan?: {
     route: AgentRoute;
+    responseMode?: AgentResponseMode;
+    responseConfidence?: number;
     actions: AgentAction[];
     presentation?: AgentPresentation;
     confidence?: number;
     reason?: string;
     origin?: AgentPlanOrigin;
     proposedRoute?: AgentRoute;
+    proposedResponseMode?: AgentResponseMode;
+    turnId?: string;
     durationMs?: number;
   };
   agentPills?: AgentPillMetadata[];

@@ -1,115 +1,378 @@
-import { acervoIcge } from "@/agent/tools/acervo-icge";
-import { bibliografia } from "@/agent/tools/bibliografia";
-import { bibliografiaVerbetes } from "@/agent/tools/bibliografia-verbetes";
-import { dicionarios } from "@/agent/tools/dicionarios";
-import { encyclossapiens } from "@/agent/tools/encyclossapiens";
-import { listSources } from "@/agent/tools/list-sources";
-import { searchBook } from "@/agent/tools/search-book";
-import { searchVerbete } from "@/agent/tools/search-verbete";
+import {
+  AGENT_BOOK_IDS,
+  AGENT_ICGE_AREAS,
+  AGENT_RESOURCE_IDS,
+  AGENT_TARGETS,
+  AGENT_VERBETE_FIELDS,
+  ICGE_TARGETS,
+  RESOURCE_TARGETS,
+  agentBook,
+} from "@/agent/config";
 import type {
   AgentAction,
-  AgentCard,
   AgentContext,
   AgentIntentId,
   AgentMatch,
   AgentTool,
 } from "@/agent/types";
 
-/** O catálogo de capacidades do agente.
- *
- * Acrescentar uma capacidade é escrever um arquivo em `tools/` e listá-lo
- * aqui — mais nada. O prompt do planejador, o JSON Schema, o botão e a
- * consulta saem todos daqui, então não há um segundo lugar para esquecer de
- * atualizar.
- *
- * A ordem define o schema e, em empate, a ordem em que os pills aparecem. */
+const url = (base: string, params: Record<string, string>) => {
+  const target = new URL(base);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) target.searchParams.set(key, value);
+  });
+  return target.toString();
+};
+const short = (prefix: string, term: string) => (term ? `${prefix}: ${term}` : prefix);
+const title = (service: string, scope: string, english: boolean) =>
+  english
+    ? `Opens ${service} for ${scope} in a new tab`
+    : `Abre ${service} para ${scope} em nova aba`;
+const action = (
+  match: AgentMatch,
+  ctx: AgentContext,
+  label: string,
+  href: string,
+  service: string,
+  destination: string,
+): AgentAction => ({
+  id: match.intent,
+  kind: match.intent === "list_sources" ? "inline-result" : "open-url",
+  label,
+  title: title(service, destination, ctx.host.english),
+  href,
+  confidence: match.confidence,
+  service,
+  destination,
+  meta: {
+    term: match.term,
+    field: match.field ?? "",
+    book: match.book ?? "",
+    area: match.area ?? "",
+    resource: match.resource ?? "",
+  },
+});
+const common = {
+  book: {
+    type: "string",
+    enum: ["", ...AGENT_BOOK_IDS],
+    description: "Obra canônica; vazio se não se aplica.",
+  },
+  field: {
+    type: "string",
+    enum: AGENT_VERBETE_FIELDS,
+    description: "Campo do verbete; texto quando não se aplica.",
+  },
+  area: {
+    type: "string",
+    enum: AGENT_ICGE_AREAS,
+    description: "Macroárea ICGE; vazio quando não se aplica.",
+  },
+  resource: {
+    type: "string",
+    enum: ["", ...AGENT_RESOURCE_IDS],
+    description: "Recurso explicitamente solicitado; vazio quando não se aplica.",
+  },
+  style: {
+    type: "string",
+    enum: ["", "bee", "simples"],
+    description: "Estilo bibliográfico; vazio usa simples.",
+  },
+};
+const tool = (value: Omit<AgentTool, "parameters">): AgentTool => ({
+  ...value,
+  parameters: common,
+});
+
 export const AGENT_TOOLS: AgentTool[] = [
-  searchBook,
-  searchVerbete,
-  bibliografia,
-  bibliografiaVerbetes,
-  dicionarios,
-  encyclossapiens,
-  acervoIcge,
-  listSources,
+  tool({
+    name: "search_book",
+    termRequired: true,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "search_book: explicit literal search in one or all books. Not for conceptual questions. Put canonical book id in book."
+        : "search_book: busca literal explicitamente pedida em um ou todos os livros. Não use para dúvida conceitual. Use o código canônico em book.",
+    intro: ({ term }, en) =>
+      en
+        ? `The literal book search for “${term}” is prepared below.`
+        : `A busca literal por “${term}” nos livros está preparada abaixo.`,
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        short(c.host.english ? "Books" : "Livros", m.term),
+        url(AGENT_TARGETS.search_book, {
+          q: m.term,
+          books: agentBook(m.book)?.consIaSearchId ?? "",
+        }),
+        "Cons-IA",
+        "busca literal nos livros",
+      ),
+  }),
+  tool({
+    name: "search_verbete",
+    termRequired: true,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "search_verbete: explicit search in Encyclopedia entries. field selects texto, titulo, autor or especialidade."
+        : "search_verbete: busca explicitamente pedida nos verbetes da Enciclopédia. field escolhe texto, titulo, autor ou especialidade.",
+    intro: ({ term }, en) =>
+      en
+        ? `The entry search for “${term}” is prepared below.`
+        : `A pesquisa de “${term}” nos verbetes está preparada abaixo.`,
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        short(c.host.english ? "Entries" : "Verbetes", m.term),
+        url(AGENT_TARGETS.search_verbete, { q: m.term, field: m.field ?? "texto" }),
+        "Cons-IA",
+        `verbetes por ${m.field ?? "texto"}`,
+      ),
+  }),
+  tool({
+    name: "search_conscienciograma",
+    termRequired: true,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "search_conscienciograma: explicit literal search in the Conscienciogram."
+        : "search_conscienciograma: busca literal explicitamente pedida no Conscienciograma.",
+    intro: ({ term }, en) =>
+      en
+        ? `The Conscienciogram search for “${term}” is prepared below.`
+        : `A busca de “${term}” no Conscienciograma está preparada abaixo.`,
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        short("CCG", m.term),
+        url(AGENT_TARGETS.search_conscienciograma, { q: m.term }),
+        "Cons-IA",
+        "Conscienciograma",
+      ),
+  }),
+  tool({
+    name: "bibliografia_livros",
+    termRequired: false,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "bibliografia_livros: explicit request to build or consult a book reference. Set book whenever identifiable."
+        : "bibliografia_livros: pedido explícito para montar ou consultar referência de livro. Preencha book quando identificável.",
+    intro: ({ book }, en) =>
+      en
+        ? `The ${agentBook(book)?.label ?? "book"} reference can be prepared in the module below.`
+        : `A referência de ${agentBook(book)?.label ?? "livro"} pode ser montada no módulo indicado.`,
+    toAction: (m, c) => {
+      const b = agentBook(m.book);
+      const name = b?.label ?? "";
+      return action(
+        m,
+        c,
+        short(c.host.english ? "Bibliography" : "Bibliografia", name),
+        url(AGENT_TARGETS.bibliografia_livros, {
+          sigla: b?.bibliographySigla ?? "",
+          style: m.style || "simples",
+        }),
+        "Cons-IA",
+        "bibliografia de livros",
+      );
+    },
+  }),
+  tool({
+    name: "bibliografia_verbetes",
+    termRequired: false,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "bibliografia_verbetes: explicit request for bibliography of Encyclopedia entries."
+        : "bibliografia_verbetes: pedido explícito de bibliografia de verbetes da Enciclopédia.",
+    intro: ({ term }, en) =>
+      en
+        ? `The entry bibliography${term ? ` for “${term}”` : ""} is prepared below.`
+        : `A bibliografia de verbetes${term ? ` para “${term}”` : ""} está preparada abaixo.`,
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        short(c.host.english ? "Entry bibliography" : "Bibliografia", m.term),
+        url(AGENT_TARGETS.bibliografia_verbetes, { q: m.term, style: m.style || "simples" }),
+        "Cons-IA",
+        "bibliografia de verbetes",
+      ),
+  }),
+  tool({
+    name: "consulta_lexicons",
+    termRequired: true,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "consulta_lexicons: explicit lexical, etymological, synonym or dictionary consultation. Always open default Cosmovision; never choose a module."
+        : "consulta_lexicons: consulta lexical, etimológica, sinonímica ou dicionarística explicitamente pedida. Sempre abre a Cosmovisão padrão; nunca escolha módulo.",
+    intro: ({ term }, en) =>
+      en
+        ? `A Cosmovision lexical consultation for “${term}” is prepared below.`
+        : `A consulta lexical em Cosmovisão para “${term}” está preparada abaixo.`,
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        short("LexiCons", m.term),
+        url(AGENT_TARGETS.consulta_lexicons, { q: m.term, autostart: "1" }),
+        "LexiCons",
+        "Cosmovisão",
+      ),
+  }),
+  tool({
+    name: "bibliomancia",
+    termRequired: false,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "bibliomancia: explicit request to draw an orthothought or start Bibliomancy."
+        : "bibliomancia: pedido explícito para sortear uma ortopensata ou iniciar a Bibliomancia.",
+    intro: (_m, en) =>
+      en
+        ? "An orthothought draw can be started below."
+        : "O sorteio de uma ortopensata pode ser iniciado pela opção abaixo.",
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        c.host.english ? "Draw orthothought" : "Sortear ortopensata",
+        url(AGENT_TARGETS.bibliomancia, { autostart: "1" }),
+        "Cons-IA",
+        "Bibliomancia",
+      ),
+  }),
+  tool({
+    name: "encyclossapiens",
+    termRequired: false,
+    responsePolicy: "complementary",
+    describe: (en) =>
+      en
+        ? "encyclossapiens: complementary resource for substantive questions about writing/submitting entries; action_only only for explicit navigation."
+        : "encyclossapiens: recurso complementar para dúvidas substantivas sobre escrita/submissão de verbetes; action_only só em navegação explícita.",
+    intro: (_m, en) =>
+      en
+        ? "The Encyclossapiens writing resources can be opened below."
+        : "Os recursos de escrita da Encyclossapiens podem ser abertos abaixo.",
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        "Encyclossapiens",
+        AGENT_TARGETS.encyclossapiens,
+        "Encyclossapiens",
+        "recursos de verbetografia",
+      ),
+  }),
+  tool({
+    name: "icge",
+    termRequired: false,
+    responsePolicy: "complementary",
+    describe: (en) =>
+      en
+        ? "icge: complementary link for ICGE agenda, institutions, publications, Verbetoteca, memory, videos, self-research or Holocycle. Substantive questions use full; action_only only for explicit navigation. Pick nearest macro area."
+        : "icge: link complementar para agenda, instituições, publicações, Verbetoteca, memória, vídeos, autopesquisa ou Holociclo. Perguntas substantivas usam full; action_only só em navegação explícita. Escolha a macroárea mais próxima.",
+    intro: (_m, en) =>
+      en
+        ? "The relevant ICGE area can be opened below."
+        : "A área pertinente do ICGE pode ser aberta abaixo.",
+    toAction: (m, c) => {
+      const area = AGENT_ICGE_AREAS.includes((m.area ?? "") as never)
+        ? ((m.area ?? "") as keyof typeof ICGE_TARGETS)
+        : "";
+      const labels: Record<string, string> = {
+        "": "ICGE",
+        agenda: "Agenda ICGE",
+        instituicoes: "Instituições",
+        publicacoes: "Publicações CCCI",
+        enciclopedia: "Verbetoteca",
+        memoria: "Memória CCCI",
+        videos: "Vídeos CCCI",
+        autopesquisa: "Autopesquisa",
+        holociclo: "Holociclo",
+      };
+      const label = labels[area] ?? "ICGE";
+      return action(m, c, label, ICGE_TARGETS[area], "ICGE", label);
+    },
+  }),
+  tool({
+    name: "open_resource",
+    termRequired: false,
+    responsePolicy: "fulfills_explicit_action",
+    describe: (en) =>
+      en
+        ? "open_resource: ONLY explicit access/navigation/study-method requests for periodicos, enciclopedia, livros_pdf, quiz, flashcards, consgpt or conslm. Never promote ConsGPT/ConsLM spontaneously."
+        : "open_resource: SOMENTE pedido explícito de acesso, navegação ou método de estudo para periodicos, enciclopedia, livros_pdf, quiz, flashcards, consgpt ou conslm. Nunca promova ConsGPT/ConsLM espontaneamente.",
+    intro: (_m, en) =>
+      en
+        ? "The requested resource can be opened below."
+        : "O recurso solicitado pode ser aberto abaixo.",
+    toAction: (m, c) => {
+      const resource = AGENT_RESOURCE_IDS.includes((m.resource ?? "") as never)
+        ? (m.resource as keyof typeof RESOURCE_TARGETS)
+        : "enciclopedia";
+      const labels: Record<string, string> = {
+        periodicos: "Periódicos",
+        enciclopedia: "Enciclopédia",
+        livros_pdf: "Livros em PDF",
+        quiz: "Quiz",
+        flashcards: "Flashcards",
+        consgpt: "ConsGPT",
+        conslm: "ConsLM",
+      };
+      const label = labels[resource] ?? "Enciclopédia";
+      return action(m, c, label, RESOURCE_TARGETS[resource], label, "acesso direto");
+    },
+  }),
+  tool({
+    name: "list_sources",
+    termRequired: false,
+    responsePolicy: "local",
+    describe: (en) =>
+      en
+        ? "list_sources: asks which files/sources are loaded now. Use direct and this local action."
+        : "list_sources: pergunta quais arquivos/fontes estão carregados agora. Use direct e esta ação local.",
+    intro: (_m, en) =>
+      en
+        ? "The loaded consultation sources are listed below."
+        : "As fontes de consulta carregadas estão listadas abaixo.",
+    toAction: (m, c) =>
+      action(
+        m,
+        c,
+        c.host.english ? "Consultation sources" : "Fontes de consulta",
+        "#",
+        "ConsBOT",
+        "fontes carregadas",
+      ),
+  }),
 ];
 
-export function agentTool(name: string): AgentTool | undefined {
-  return AGENT_TOOLS.find((tool) => tool.name === name);
-}
-
-/** Teto de botões exibidos de uma vez. Mais que isso vira ruído e compete
- * visualmente com as ações nativas (copiar / compartilhar / tentar de novo).
- *
- * Duas é de propósito: quando a pergunta não diz o alvo ("onde aparece a
- * palavra X?"), o módulo oferece as duas buscas possíveis em vez de escolher
- * uma por precedência arbitrária. */
 export const MAX_AGENT_ACTIONS = 2;
-
-/** Converte pares (intenção, parâmetros) em ações, deduplicando por intenção
- * e respeitando o teto. */
+export function agentTool(name: string) {
+  return AGENT_TOOLS.find((item) => item.name === name);
+}
 export function actionsFromMatches(matches: AgentMatch[], ctx: AgentContext): AgentAction[] {
-  const actions: AgentAction[] = [];
   const seen = new Set<AgentIntentId>();
-
-  for (const match of matches) {
-    if (actions.length >= MAX_AGENT_ACTIONS) break;
-    if (seen.has(match.intent)) continue;
-
-    const tool = agentTool(match.intent);
-    if (!tool) continue;
-    if (tool.termRequired && !match.term) continue;
-
-    seen.add(match.intent);
-    actions.push(tool.toAction(match, ctx));
-  }
-
-  return actions;
-}
-
-/** Executa a consulta da ferramenta correspondente (modo «Busca Integrada»).
- *
- * Diferente do planejamento, aqui o erro SOBE: a consulta é resposta a um
- * clique, e engolir a falha deixaria o usuário olhando para um botão que não
- * fez nada. O componente mostra a mensagem e oferece o módulo externo. */
-export function executeAgentAction(action: AgentAction, ctx: AgentContext, signal?: AbortSignal) {
-  const tool = agentTool(action.id);
-  if (!tool) return Promise.reject(new Error(`Ferramenta desconhecida: ${action.id}`));
-
-  const match: AgentMatch = {
-    intent: action.id,
-    term: action.meta?.term ?? "",
-    field: action.meta?.field as AgentMatch["field"],
-    book: action.meta?.book,
-  };
-
-  return tool.execute(match, ctx, signal);
-}
-
-/* ───────────────────────── resultados já buscados ───────────────────────────
- * No modo «Alimentar LLM» a consulta acontece ANTES da resposta, e o
- * botão do card continua disponível depois. Sem esta memória, clicar nele
- * repetiria uma consulta que já foi feita segundos antes.
- *
- * Guarda poucos e é volátil de propósito: serve à mensagem em curso, não é
- * cache de verdade. A chave inclui os parâmetros, então mudar de obra ou de
- * campo busca de novo, como deve. */
-const RECENT_LIMIT = 4;
-const recent = new Map<string, AgentCard>();
-
-function cardKey(action: AgentAction, ctx: AgentContext): string {
-  const { term = "", field = "", book = "" } = action.meta ?? {};
-  // O thread entra na chave porque esta memória serve à MENSAGEM em curso, não
-  // ao corpus: sem ele, uma conversa servia o resultado guardado por outra, e
-  // o card aparecia pronto para uma busca que aquela conversa nunca fez.
-  return `${ctx.threadId}:${action.id}:${term}:${field}:${book}`;
-}
-
-export function rememberCard(action: AgentAction, ctx: AgentContext, card: AgentCard): void {
-  if (recent.size >= RECENT_LIMIT) recent.delete(recent.keys().next().value as string);
-  recent.set(cardKey(action, ctx), card);
-}
-
-export function recallCard(action: AgentAction, ctx: AgentContext): AgentCard | undefined {
-  return recent.get(cardKey(action, ctx));
+  return matches
+    .filter((match) => match.confidence >= 0.55)
+    .filter((match) => {
+      const item = agentTool(match.intent);
+      if (!item || seen.has(match.intent) || (item.termRequired && !match.term)) return false;
+      if (
+        match.intent === "open_resource" &&
+        !AGENT_RESOURCE_IDS.includes((match.resource ?? "") as never)
+      )
+        return false;
+      seen.add(match.intent);
+      return true;
+    })
+    .slice(0, MAX_AGENT_ACTIONS)
+    .map((match, position) => ({ ...agentTool(match.intent)!.toAction(match, ctx), position }));
 }

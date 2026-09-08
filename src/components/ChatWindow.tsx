@@ -37,6 +37,7 @@ import { logFeatureAccess } from "@/lib/access-log";
 import {
   AgentActions,
   AgentStatus,
+  buildAgentResponseContext,
   executeAgentAction,
   sourceListAnswer,
   sourceListErrorAnswer,
@@ -100,6 +101,10 @@ function pillsForAudit(actions: AgentAction[]): AgentPillMetadata[] {
       id: action.id,
       label: action.label,
       link: action.href,
+      confidence: action.confidence,
+      position: action.position,
+      service: action.service,
+      destination: action.destination,
       ...(action.meta ? { parameters: action.meta } : {}),
     }));
 }
@@ -117,9 +122,11 @@ function agentAuditMeta(triage: AgentTriage | null) {
   if (!triage || triage.origin === "bypass") return {};
   return {
     agent_route: triage.mode,
+    agent_response_mode: triage.responseMode,
     agent_proposed_route: triage.proposedRoute ?? triage.mode,
     agent_origin: triage.origin,
     agent_confidence: triage.confidence,
+    agent_response_confidence: triage.responseConfidence,
     agent_reason: triage.reason,
     agent_action_count: triage.actions.length,
     ...(triage.durationMs === undefined ? {} : { agent_duration_ms: triage.durationMs }),
@@ -412,6 +419,7 @@ export function ChatWindow({
   const preparationCancelledRef = useRef(false);
   const pendingEchoIdRef = useRef<string | null>(null);
   const pendingAgentPillsRef = useRef<AgentPillMetadata[]>([]);
+  const pendingAgentResponseContextRef = useRef("");
   const pendingFollowUpRef = useRef<{
     userText: string;
     isEnglish: boolean;
@@ -440,23 +448,47 @@ export function ChatWindow({
       english: isEnglish,
       vectorStoreId: settings.vectorStoreId,
       loadActiveSourceFiles: () => fetchVectorStoreFiles(settings.vectorStoreId),
-      logEvent: (event) => (
-        logFeatureAccess({
-          module: "consbot",
-          action: event.via === "api" ? "agent_action" : "pill_click",
-          label: event.via === "api" ? "Ação interna do Agent" : "Pill do Agent",
-          value: event.intent,
-          chat_id: threadId,
-          meta: { intent: event.intent, detection: event.detection, via: event.via, ...event.meta },
-        }),
-        onAuditInteraction({
-          module: "consbot",
-          action: event.via === "api" ? "agent_action" : "pill_click",
-          label: event.via === "api" ? "Ação interna do Agent" : "Pill do Agent",
-          value: event.intent,
-          meta: { intent: event.intent, detection: event.detection, via: event.via, ...event.meta },
-        })
-      ),
+      logEvent: (event) => {
+        const action =
+          event.via === "api"
+            ? "agent_action"
+            : event.via === "impression"
+              ? "pill_impression"
+              : "pill_click";
+        const label =
+          event.via === "api"
+            ? "Ação interna do Agent"
+            : event.via === "impression"
+              ? "Impressão de pill do Agent"
+              : "Pill do Agent";
+        return (
+          logFeatureAccess({
+            module: "consbot",
+            action,
+            label,
+            value: event.intent,
+            chat_id: threadId,
+            meta: {
+              intent: event.intent,
+              detection: event.detection,
+              via: event.via,
+              ...event.meta,
+            },
+          }),
+          onAuditInteraction({
+            module: "consbot",
+            action,
+            label,
+            value: event.intent,
+            meta: {
+              intent: event.intent,
+              detection: event.detection,
+              via: event.via,
+              ...event.meta,
+            },
+          })
+        );
+      },
     }),
     [isEnglish, onAuditInteraction, settings.vectorStoreId, threadId],
   );
@@ -509,7 +541,12 @@ export function ChatWindow({
               // do server-side, now run here before the request leaves the browser.
               messages: await convertToModelMessages(messages),
               model: settingsRef.current.model,
-              systemPrompt: buildSystemPrompt(settingsRef.current),
+              systemPrompt: [
+                buildSystemPrompt(settingsRef.current),
+                pendingAgentResponseContextRef.current,
+              ]
+                .filter(Boolean)
+                .join("\n\n"),
               reasoningEffort: settingsRef.current.reasoningEffort,
               verbosity: verbosityForDepth(settingsRef.current.responseDepth),
               vectorStores,
@@ -931,16 +968,27 @@ export function ChatWindow({
         const classifierTrace = triage?.classifierResponse
           ? { model: "ConsBOT Luna", response: triage.classifierResponse }
           : undefined;
+        const plannedActions = (triage?.actions ?? []).map((action, position) => ({
+          ...action,
+          position,
+          turnId: echoId,
+        }));
         const agentPlan =
           triage && triage.origin !== "bypass"
             ? {
                 route: triage!.mode,
-                actions: triage!.actions,
+                responseMode: triage.responseMode,
+                responseConfidence: triage.responseConfidence,
+                actions: plannedActions,
+                turnId: echoId,
                 presentation: current.agent.presentation ?? "citations",
                 confidence: triage.confidence,
                 reason: triage.reason,
                 origin: triage.origin,
                 ...(triage.proposedRoute ? { proposedRoute: triage.proposedRoute } : {}),
+                ...(triage.proposedResponseMode
+                  ? { proposedResponseMode: triage.proposedResponseMode }
+                  : {}),
                 ...(triage.durationMs === undefined ? {} : { durationMs: triage.durationMs }),
               }
             : undefined;
@@ -953,11 +1001,20 @@ export function ChatWindow({
             value: agentPlan.route,
             meta: {
               route: agentPlan.route,
+              response_mode: agentPlan.responseMode,
               proposed_route: agentPlan.proposedRoute ?? agentPlan.route,
+              proposed_response_mode: agentPlan.proposedResponseMode ?? agentPlan.responseMode,
               origin: agentPlan.origin,
               confidence: agentPlan.confidence,
               reason: agentPlan.reason,
-              actions: agentPlan.actions.map((action) => action.id),
+              actions: agentPlan.actions.map((action) => ({
+                id: action.id,
+                confidence: action.confidence,
+                position: action.position,
+                service: action.service,
+                destination: action.destination,
+              })),
+              turn_id: echoId,
               presentation: agentPlan.presentation,
               ...(agentPlan.durationMs === undefined ? {} : { duration_ms: agentPlan.durationMs }),
             },
@@ -985,7 +1042,11 @@ export function ChatWindow({
         const classicAgent = current.agent.presentation === "classic";
         const useCorpus = manualCorpus || (!classicAgent && triage?.mode === "corpus");
         const willAnswerDirectly =
-          manualCorpus || triage?.mode === "direct" || triage?.mode === "clarify" || useCorpus;
+          manualCorpus ||
+          triage?.responseMode === "action_only" ||
+          triage?.responseMode === "direct" ||
+          triage?.responseMode === "clarify" ||
+          useCorpus;
         let semanticContext: SemanticContextTurn | null = null;
 
         if (useCorpus) {
@@ -1088,11 +1149,7 @@ export function ChatWindow({
             ),
             directMessage,
           ]);
-          if (
-            current.agent.enabled &&
-            current.agent.presentation === "classic" &&
-            current.agent.followUpSuggestions
-          ) {
+          if (current.agent.followUpSuggestions) {
             void generateAgentFollowUp({
               assistantMessageId: directMessage.id,
               userText: value,
@@ -1106,7 +1163,12 @@ export function ChatWindow({
           return;
         }
 
-        const systemPrompt = buildSystemPrompt(current);
+        const agentResponseContext = agentPlan
+          ? buildAgentResponseContext(agentPlan, isEnglish)
+          : "";
+        const systemPrompt = [buildSystemPrompt(current), agentResponseContext]
+          .filter(Boolean)
+          .join("\n\n");
         pendingAuditId.current = onAuditStart({
           endpoint: `${API_BASE}/api/llm`,
           sentAt: new Date().toISOString(),
@@ -1153,12 +1215,10 @@ export function ChatWindow({
         setMessages((existing) => existing.filter((message) => message.id !== echoId));
         pendingEchoIdRef.current = null;
         pendingAgentPillsRef.current = agentPills;
-        pendingFollowUpRef.current =
-          current.agent.enabled &&
-          current.agent.presentation === "classic" &&
-          current.agent.followUpSuggestions
-            ? { userText: value, isEnglish }
-            : null;
+        pendingAgentResponseContextRef.current = agentResponseContext;
+        pendingFollowUpRef.current = current.agent.followUpSuggestions
+          ? { userText: value, isEnglish }
+          : null;
 
         void sendMessage({
           text: value,
@@ -1711,8 +1771,8 @@ export function ChatWindow({
                   ) : null}
                   {message.role === "assistant" &&
                   precedingUser?.role === "user" &&
-                  classicAgentTurn &&
-                  !waitingForThisAssistant ? (
+                  !waitingForThisAssistant &&
+                  (classicAgentTurn || message.metadata?.agentFollowUpQuestion) ? (
                     <div className="mt-2">
                       <AgentActions
                         threadId={threadId}
@@ -1720,6 +1780,7 @@ export function ChatWindow({
                         host={agentHost}
                         userMessage={precedingUser}
                         followUpQuestion={message.metadata?.agentFollowUpQuestion}
+                        showExternalActions={classicAgentTurn}
                         disabled={isBusy}
                         onFollowUp={(question) => {
                           logFeatureAccess({

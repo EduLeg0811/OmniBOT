@@ -1,243 +1,228 @@
-/** Configuração do módulo AGENT (ações sugeridas).
- *
- * ─────────────────────────────────────────────────────────────────────────────
- *  AGENT_MODE — 0 (desligado) | 1 (ligado, padrão)
- * ─────────────────────────────────────────────────────────────────────────────
- *
- *  LIGADO, o ConsBOT classifica cada pergunta com Luna/None e decide entre
- *  resposta direta, resposta completa, recuperação do corpus ou abertura de
- *  módulos pertinentes.
- *
- *  O que este módulo NÃO faz — de propósito:
- *   - não executa nada sozinho: quem clica é o usuário, sempre.
- *
- *  Apesar do nome, não é um "modo agente" no sentido de tool calling — a LLM
- *  roteia o turno, mas nunca executa módulos externos em nome da pessoa.
- *  O catálogo de intenções está em docs/agent-rules.docx.
- *
- *  DESLIGADO (0), o módulo é inerte e as mensagens seguem direto ao modelo
- *  principal configurado.
- *
- *  Este valor é apenas o PADRÃO da sessão: com ACCESS_LEVEL=1 o menu de
- *  configuração expõe um interruptor que o sobrescreve em `ChatSettings.agent`
- *  enquanto a aba estiver aberta (as settings não são persistidas — ver
- *  chat-store.ts). Fora do admin vale sempre o padrão calculado aqui.
- *
- *  PRECEDÊNCIA:
- *   1. VITE_AGENT_MODE, quando definida, manda — inclusive para DESLIGAR no
- *      dev (VITE_AGENT_MODE=0) quando se quer conferir o comportamento normal.
- *   2. Sem essa variável, o dev (`npm run dev`) liga sozinho. `import.meta.env.DEV`
- *      é do Vite e vale só no dev server: nenhum build de produção entra aqui,
- *      nem rodando na mesma máquina, nem aberto pelo IP da LAN.
- *   3. Em build, vale AGENT_MODE_DEFAULT, hoje 1: o módulo vai ligado para
- *      produção. Troque para 0 para desligá-lo em todos os builds de uma vez.
- */
-// Anotado como `number` de propósito: sem isso o TS trava o literal e acusa a
-// comparação `=== 1` como impossível quando o valor mudar.
 const AGENT_MODE_DEFAULT: number = 1;
-
 const agentModeOverride = String(import.meta.env.VITE_AGENT_MODE ?? "").trim();
-
 export const AGENT_MODE = agentModeOverride
   ? agentModeOverride === "1"
   : import.meta.env.DEV || AGENT_MODE_DEFAULT === 1;
 
-/** Catálogo de intenções. A ordem define o schema e, em caso de empate,
- * a ordem em que os botões aparecem.
- *
- * Especificado em docs/agent-rules.docx — este arquivo é a tradução daquele
- * documento para código, e os dois devem ser alterados juntos. */
 export const AGENT_INTENTS = [
   "search_book",
   "search_verbete",
+  "search_conscienciograma",
   "bibliografia_livros",
   "bibliografia_verbetes",
-  "consulta_dicionarios",
+  "consulta_lexicons",
+  "bibliomancia",
   "encyclossapiens",
-  "acervo_icge",
+  "icge",
+  "open_resource",
   "list_sources",
 ] as const;
-
 export type AgentIntentId = (typeof AGENT_INTENTS)[number];
 
-/** Módulos externos de destino, um por intenção.
- *
- * ATENÇÃO — contrato `?q=`: NENHUMA destas páginas lê parâmetro de URL hoje.
- * Todas são SPAs cujo termo entra pelo campo de busca; foi verificado nos
- * bundles das três. Os links abaixo já enviam `?q=<termo>` para que o deep
- * link passe a funcionar assim que cada página passar a ler o parâmetro, sem
- * alteração nenhuma aqui. Enquanto isso, o botão abre a página e o usuário
- * digita o termo. */
-const stripQuery = (url: string) => url.replace(/[?&]+$/, "");
+const envUrl = (key: string, fallback: string) =>
+  String((import.meta.env as Record<string, unknown>)[key] || fallback)
+    .trim()
+    .replace(/[?&]+$/, "");
 
-export const AGENT_TARGETS: Record<AgentIntentId, string> = {
-  search_book: stripQuery(
-    String(import.meta.env.VITE_SEARCH_BOOK_URL || "").trim() ||
-      "https://cons-ia.org/index_search_book.html",
+export const AGENT_TARGETS = {
+  search_book: envUrl("VITE_SEARCH_BOOK_URL", "https://cons-ia.org/index_search_book.html"),
+  search_verbete: envUrl("VITE_SEARCH_VERBETE_URL", "https://cons-ia.org/index_search_verb.html"),
+  search_conscienciograma: envUrl(
+    "VITE_SEARCH_CCG_URL",
+    "https://cons-ia.org/index_search_ccg.html",
   ),
-  search_verbete: stripQuery(
-    String(import.meta.env.VITE_SEARCH_VERBETE_URL || "").trim() ||
-      "https://cons-ia.org/index_search_verb.html",
+  bibliografia_livros: envUrl("VITE_BIBLIOGRAPHY_URL", "https://cons-ia.org/index_biblio_wv.html"),
+  bibliografia_verbetes: envUrl(
+    "VITE_BIBLIOGRAPHY_VERBETE_URL",
+    "https://cons-ia.org/index_biblio_verbete.html",
   ),
-  bibliografia_livros: stripQuery(
-    String(import.meta.env.VITE_BIBLIOGRAPHY_URL || "").trim() ||
-      "https://cons-ia.org/index_biblio_wv.html",
+  consulta_lexicons: envUrl("VITE_LEXICONS_URL", "https://lexicons.cons-ia.org/"),
+  bibliomancia: envUrl("VITE_BIBLIOMANCIA_URL", "https://cons-ia.org/index_mancia.html"),
+  encyclossapiens: envUrl(
+    "VITE_ENCYCLOSSAPIENS_URL",
+    "https://encyclossapiens.org/kit-verbetografo/",
   ),
-  bibliografia_verbetes: stripQuery(
-    String(import.meta.env.VITE_BIBLIOGRAPHY_VERBETE_URL || "").trim() ||
-      "https://cons-ia.org/index_biblio_verbete.html",
-  ),
-  consulta_dicionarios: stripQuery(
-    String(import.meta.env.VITE_LEXICONS_URL || "").trim() || "https://lexicons.cons-ia.org/",
-  ),
-  encyclossapiens: stripQuery(
-    String(import.meta.env.VITE_ENCYCLOSSAPIENS_URL || "").trim() ||
-      "https://encyclossapiens.org/kit-verbetografo/",
-  ),
-  acervo_icge: stripQuery(
-    String(import.meta.env.VITE_ICGE_URL || "").trim() || "https://www.icge.org.br/",
-  ),
+  icge: envUrl("VITE_ICGE_URL", "https://www.icge.org.br/"),
+  open_resource: "#",
   list_sources: "#",
-};
+} satisfies Record<AgentIntentId, string>;
 
-/** Campos pelos quais a busca em verbetes pode ser feita.
- *
- * Existe porque o endpoint `/api/lexical/verbetes/search` do Main-Server aceita
- * autor, título e especialidade separados — coisa que a página web não faz.
- * Vale, portanto, apenas no modo «Busca Integrada»; no modo link o campo é
- * ignorado, já que a URL só leva o termo. `""` = busca no texto (Definologia),
- * que é o padrão e o único caminho das demais intenções. */
-export const AGENT_VERBETE_FIELDS = ["", "titulo", "autor", "especialidade"] as const;
-
+export const AGENT_VERBETE_FIELDS = ["texto", "titulo", "autor", "especialidade"] as const;
 export type AgentVerbeteField = (typeof AGENT_VERBETE_FIELDS)[number];
+export const AGENT_ICGE_AREAS = [
+  "",
+  "agenda",
+  "instituicoes",
+  "publicacoes",
+  "enciclopedia",
+  "memoria",
+  "videos",
+  "autopesquisa",
+  "holociclo",
+] as const;
+export const AGENT_RESOURCE_IDS = [
+  "periodicos",
+  "enciclopedia",
+  "livros_pdf",
+  "quiz",
+  "flashcards",
+  "consgpt",
+  "conslm",
+] as const;
 
-/** Nome do parâmetro de busca, igual nos três destinos. */
-export const AGENT_SEARCH_PARAM = "q";
-
-/** Tetos de espera do módulo, em milissegundos.
- *
- * Existem porque `fetch` não tem timeout: sem eles, um Main-Server que aceita
- * a conexão e não responde deixava a triagem pendurada — e, como a triagem
- * roda ANTES do envio, a pergunta do usuário nunca saía. O `catch` do módulo
- * já trata o abort como qualquer outra falha, então estourar o teto devolve
- * bypass, que é o comportamento de sempre.
- *
- * O do planejador é mais curto de propósito: ele atrasa o envio da pergunta.
- * O da consulta é maior porque busca em corpus grande demora mais, e nesse
- * ponto o usuário já pediu explicitamente o dado. */
 export const AGENT_PLANNER_TIMEOUT_MS = 6000;
-export const AGENT_LOOKUP_TIMEOUT_MS = 8000;
-
-/** Modelo da classificação: o mais barato/rápido do catálogo, já que a tarefa
- * é rotular uma frase curta, não redigir. Mesmo usado nas sugestões iniciais. */
 export const AGENT_CLASSIFIER_MODEL = "gpt-5.6-luna";
-
-/** Esforço de raciocínio da classificação: nenhum. Rotular uma frase curta não
- * se beneficia de raciocínio, e cada passo a mais atrasaria um botão que
- * aparece ao lado de uma resposta já em andamento.
- * `id` vai na requisição; `label` é o que o painel de configuração mostra. */
 export const AGENT_CLASSIFIER_REASONING = { id: "none", label: "None" } as const;
-
-/** Política local de confiança. O modelo fornece uma estimativa, mas a decisão
- * final é sempre do cliente: rotas que escondem a resposta principal exigem
- * confiança alta; incerteza segue para o modelo principal. */
 export const AGENT_CONFIDENCE_HIGH = 0.78;
 export const AGENT_CONFIDENCE_MEDIUM = 0.55;
-
-/** Teto da frase que acompanha o pill. Duas frases, não um parágrafo: quem
- * pediu busca quer a busca, não texto. */
 export const AGENT_ANSWER_MAX = 320;
 
-/** Quantos resultados pedir ao Main-Server e quantos mostrar antes do
- * «ver mais». Buscar mais do que se mostra é o que permite expandir sem uma
- * segunda ida à rede.
- *
- * `AGENT_SEARCH_LIMIT` é também o sinal de saturação do card: um lote cheio
- * quer dizer «havia pelo menos isto», não «havia exatamente isto». */
-export const AGENT_SEARCH_LIMIT = 12;
-export const AGENT_CARD_PREVIEW = 5;
-
-/** Obras pesquisáveis pelo `search_book`, com os apelidos que as pessoas usam.
- *
- * Os ids são os do Main-Server (`GET /api/lexical/sources`) e vão em `sources`
- * na consulta. `aliases` são minúsculos e sem acento — a detecção normaliza o
- * texto antes de comparar; `sigla` casa só em maiúsculas, para «LO» não pegar
- * o «lo» de qualquer palavra.
- *
- * A Enciclopédia (EC) está de fora de propósito: é o corpus dos VERBETES, e
- * quem a menciona cai em `search_verbete`, não aqui.
- *
- * Apelidos que também são termos de busca ficaram de fora — «proéxis» e
- * «tenepes» sozinhos são conceito, não livro; só «manual da proéxis» e
- * «manual da tenepes» identificam a obra. */
-export const AGENT_BOOKS = [
+export type AgentBook = {
+  mainServerSourceId: string;
+  consIaSearchId: string;
+  bibliographySigla: string;
+  label: string;
+  aliases: readonly string[];
+};
+export const AGENT_BOOKS: readonly AgentBook[] = [
   {
-    id: "TEAT",
+    mainServerSourceId: "TEAT",
+    consIaSearchId: "TEAT",
+    bibliographySigla: "TEAT",
     label: "200 Teáticas da Conscienciologia",
-    sigla: "TEAT",
-    aliases: ["200 teaticas da conscienciologia", "200 teaticas"],
+    aliases: ["200 teaticas", "200 teáticas"],
   },
   {
-    id: "EXP",
+    mainServerSourceId: "EXP",
+    consIaSearchId: "EXP",
+    bibliographySigla: "EXP",
     label: "700 Experimentos da Conscienciologia",
-    sigla: "EXP",
-    aliases: ["700 experimentos da conscienciologia", "700 experimentos"],
+    aliases: ["700 experimentos"],
   },
-  { id: "CCG", label: "Conscienciograma", sigla: "CCG", aliases: ["conscienciograma"] },
   {
-    id: "DAC",
+    mainServerSourceId: "DAC",
+    consIaSearchId: "DAC",
+    bibliographySigla: "DAC",
     label: "Dicionário de Argumentos da Conscienciologia",
-    sigla: "DAC",
-    aliases: ["dicionario de argumentos da conscienciologia", "dicionario de argumentos"],
+    aliases: ["dicionario de argumentos", "dicionário de argumentos"],
   },
-  { id: "HSP", label: "Homo sapiens pacificus", sigla: "HSP", aliases: ["homo sapiens pacificus"] },
   {
-    id: "HSR",
+    mainServerSourceId: "HSP",
+    consIaSearchId: "HSP",
+    bibliographySigla: "HSP",
+    label: "Homo sapiens pacificus",
+    aliases: ["homo sapiens pacificus"],
+  },
+  {
+    mainServerSourceId: "HSR",
+    consIaSearchId: "HSR",
+    bibliographySigla: "HSR",
     label: "Homo sapiens reurbanisatus",
-    sigla: "HSR",
     aliases: ["homo sapiens reurbanisatus"],
   },
   {
-    id: "LO",
+    mainServerSourceId: "LO",
+    consIaSearchId: "LO",
+    bibliographySigla: "LO",
     label: "Léxico de Ortopensatas",
-    sigla: "LO",
-    aliases: ["lexico de ortopensatas", "lexico"],
+    aliases: ["lexico de ortopensatas", "léxico de ortopensatas"],
   },
   {
-    id: "MDE",
+    mainServerSourceId: "MDE",
+    consIaSearchId: "MDE",
+    bibliographySigla: "MDE",
     label: "Manual da Dupla Evolutiva",
-    sigla: "MDE",
-    aliases: ["manual da dupla evolutiva", "dupla evolutiva"],
+    aliases: ["manual da dupla evolutiva"],
   },
-  { id: "MP", label: "Manual da Proéxis", sigla: "MP", aliases: ["manual da proexis"] },
-  { id: "TNP", label: "Manual da Tenepes", sigla: "TNP", aliases: ["manual da tenepes"] },
   {
-    id: "MINI_ARLINDO",
+    mainServerSourceId: "MP",
+    consIaSearchId: "MP",
+    bibliographySigla: "MP",
+    label: "Manual da Proéxis",
+    aliases: ["manual da proexis", "manual da proéxis"],
+  },
+  {
+    mainServerSourceId: "TNP",
+    consIaSearchId: "TNP",
+    bibliographySigla: "TNP",
+    label: "Manual da Tenepes",
+    aliases: ["manual da tenepes"],
+  },
+  {
+    mainServerSourceId: "MINI_ARLINDO",
+    consIaSearchId: "MINI_ARLINDO",
+    bibliographySigla: "",
     label: "Minitertúlia — Arlindo",
-    sigla: "",
-    aliases: ["minitertulia arlindo", "minitertulia"],
+    aliases: ["minitertulia arlindo", "minitertúlia arlindo"],
   },
   {
-    id: "PROJ1986",
+    mainServerSourceId: "PROJ1986",
+    consIaSearchId: "PROJ1986",
+    bibliographySigla: "",
     label: "Projeciologia (1986)",
-    sigla: "",
-    aliases: ["projeciologia 1986", "projeciologia (1986)"],
+    aliases: ["projeciologia 1986"],
   },
-  { id: "PROJ", label: "Projeciologia", sigla: "PROJ", aliases: ["projeciologia"] },
-  { id: "QUEST", label: "Questões Mini", sigla: "QUEST", aliases: ["questoes mini"] },
   {
-    id: "TC",
+    mainServerSourceId: "PROJ",
+    consIaSearchId: "PROJ",
+    bibliographySigla: "PROJ",
+    label: "Projeciologia",
+    aliases: ["projeciologia"],
+  },
+  {
+    mainServerSourceId: "QUEST",
+    consIaSearchId: "QUEST",
+    bibliographySigla: "",
+    label: "Questões Mini",
+    aliases: ["questoes mini", "questões mini"],
+  },
+  {
+    mainServerSourceId: "TC",
+    consIaSearchId: "TC",
+    bibliographySigla: "TC",
     label: "Temas da Conscienciologia",
-    sigla: "TC",
     aliases: ["temas da conscienciologia"],
   },
-  { id: "ZEFIRO", label: "Zéfiro", sigla: "ZEFIRO", aliases: ["zefiro"] },
-] as const;
-
-export type AgentBookId = (typeof AGENT_BOOKS)[number]["id"];
-
-export const AGENT_BOOK_IDS: readonly string[] = AGENT_BOOKS.map((book) => book.id);
-
-export function agentBookLabel(id: string | undefined): string {
-  return AGENT_BOOKS.find((book) => book.id === id)?.label ?? "";
+  {
+    mainServerSourceId: "ZEFIRO",
+    consIaSearchId: "ZEFIRO",
+    bibliographySigla: "",
+    label: "Zéfiro",
+    aliases: ["zefiro", "zéfiro"],
+  },
+];
+export const AGENT_BOOK_IDS = AGENT_BOOKS.map((book) => book.mainServerSourceId);
+export function agentBook(id: string | undefined) {
+  return AGENT_BOOKS.find(
+    (book) =>
+      book.mainServerSourceId === id ||
+      book.consIaSearchId === id ||
+      book.aliases.includes(id ?? ""),
+  );
 }
+export function agentBookLabel(id: string | undefined): string {
+  return agentBook(id)?.label ?? "";
+}
+
+export const ICGE_TARGETS: Record<(typeof AGENT_ICGE_AREAS)[number], string> = {
+  "": "https://www.icge.org.br/",
+  agenda: "https://www.icge.org.br/?page_id=6051",
+  instituicoes: "https://www.icge.org.br/?page_id=6611",
+  publicacoes: "https://www.icge.org.br/?page_id=1417",
+  enciclopedia: "https://www.icge.org.br/?page_id=13493",
+  memoria: "https://www.icge.org.br/?page_id=2585",
+  videos: "https://www.icge.org.br/?page_id=9973",
+  autopesquisa: "https://www.icge.org.br/?page_id=1385",
+  holociclo: "https://www.icge.org.br/?page_id=12238",
+};
+
+export const RESOURCE_TARGETS: Record<(typeof AGENT_RESOURCE_IDS)[number], string> = {
+  periodicos: "https://periodicos.conscienciologia.org.br/",
+  enciclopedia: "https://enciclopediadaconscienciologia.org/",
+  livros_pdf:
+    "https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj?usp=sharing",
+  quiz: "https://notebooklm.google.com/notebook/8f6fc286-021f-4184-b572-7f17c8561539",
+  flashcards: "https://notebooklm.google.com/notebook/2da2f57f-996c-4efd-b24c-c2f49ba8b452",
+  consgpt: "https://chatgpt.com/g/g-68a5d68b96c4819189dd1e6fb0def83f-consgpt",
+  conslm: "https://notebooklm.google.com/notebook/c3528e65-0c2b-4a80-b3f2-2f22e3626b67",
+};

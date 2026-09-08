@@ -27,7 +27,9 @@ export type VectorStoreFilesResponse = {
 const cachedSourcesByStore = new Map<VectorStoreId, VectorStoreFilesResponse>();
 const inFlightRequestsByStore = new Map<VectorStoreId, Promise<VectorStoreFilesResponse>>();
 
-export function cachedVectorStoreFiles(storeId: VectorStoreId): VectorStoreFilesResponse | undefined {
+export function cachedVectorStoreFiles(
+  storeId: VectorStoreId,
+): VectorStoreFilesResponse | undefined {
   return cachedSourcesByStore.get(storeId);
 }
 

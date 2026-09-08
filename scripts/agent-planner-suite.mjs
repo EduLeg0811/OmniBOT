@@ -55,6 +55,8 @@ async function loadPlanner() {
       'export { presentationInstructionFor } from "@/agent/planner/prompt";',
       'export { AGENT_PLANNER_SCHEMA } from "@/agent/planner/schema";',
       'export { AGENT_TOOLS } from "@/agent/tools/registry";',
+      'export { actionsFromMatches } from "@/agent/tools/registry";',
+      'export { normalizePlannerPayload } from "@/agent/planner/plan";',
       'export { AGENT_CONFIDENCE_HIGH, AGENT_CONFIDENCE_MEDIUM } from "@/agent/config";',
     ].join("\n"),
   );
@@ -107,48 +109,32 @@ async function classify(planner, instructions, schema, question) {
 
   const { content } = await response.json();
   const parsed = JSON.parse(content ?? "{}");
-  const actions = Array.isArray(parsed.actions) ? parsed.actions.slice(0, 2) : [];
-  const answer = String(parsed.answer ?? "").trim();
-  const proposedRoute = ["direct", "full", "corpus", "clarify"].includes(parsed.route)
-    ? parsed.route
-    : "full";
-  const confidence =
-    typeof parsed.confidence === "number" &&
-    Number.isFinite(parsed.confidence) &&
-    parsed.confidence >= 0 &&
-    parsed.confidence <= 1
-      ? parsed.confidence
-      : null;
-
-  // Espelha a normalização efetiva do cliente no modo Clássico, escolhido pela
-  // suíte porque é nele que ações externas aparecem como pills. Ausência ou
-  // baixa confiança nunca pode suprimir o modelo principal.
-  let mode = "full";
-  if (confidence !== null && confidence >= planner.AGENT_CONFIDENCE_MEDIUM) {
-    if (
-      proposedRoute === "direct" &&
-      confidence >= planner.AGENT_CONFIDENCE_HIGH &&
-      (actions.length > 0 || answer)
-    ) {
-      mode = "direct";
-    } else if (proposedRoute === "clarify" && answer) mode = "clarify";
-    else if (
-      proposedRoute === "corpus" &&
-      confidence >= planner.AGENT_CONFIDENCE_HIGH &&
-      actions.length > 0
-    ) {
-      mode = "direct";
-    }
-  }
+  const context = {
+    userText: question,
+    semanticSourceIds: ["LO"],
+    hasFileSearch: true,
+    settings: { enabled: true, prompt: "", presentation: "classic", followUpSuggestions: true },
+    host: { apiBase: API_BASE, english: false, vectorStoreId: "test", logEvent() {} },
+    threadId: "live-suite",
+  };
+  const normalized = planner.normalizePlannerPayload(parsed, context, 0, content ?? "");
+  const rawActions = Array.isArray(parsed.actions) ? parsed.actions.slice(0, 2) : [];
 
   return {
-    intents: actions.map((a) => a.intent).filter(Boolean),
-    mode,
-    proposedRoute,
-    confidence,
+    intents: normalized.actions.map((a) => a.id),
+    mode: normalized.responseMode,
+    proposedRoute: parsed.responseMode ?? "full",
+    confidence: normalized.responseConfidence,
     reason: parsed.reason ?? "—",
-    answer,
-    args: actions.map((a) => ({ term: a.term, field: a.field || "", book: a.book || "" })),
+    answer: normalized.answer,
+    args: rawActions.map((a) => ({
+      term: a.term,
+      field: a.field || "",
+      book: a.book || "",
+      area: a.area || "",
+      resource: a.resource || "",
+    })),
+    urls: normalized.actions.map((a) => a.href),
   };
 }
 
@@ -206,13 +192,14 @@ async function main() {
           mode: "erro",
           proposedRoute: "—",
           args: [],
+          urls: [],
           error: String(error.message),
         });
       }
     }
 
     const hits = runs.filter((run) => same(run.intents, testCase.expect)).length;
-    const wanted = testCase.mode ?? (testCase.expect.length > 0 ? "direct" : "full");
+    const wanted = testCase.mode ?? (testCase.expect.length > 0 ? "action_only" : "full");
     const modeHits = runs.filter((run) => run.mode === wanted).length;
     return { testCase, runs, hits, wanted, modeHits };
   });
@@ -246,6 +233,15 @@ async function main() {
     }
     if (testCase.field && !runs.every((r) => r.args.some((a) => a.field === testCase.field))) {
       flags.push(`field≠${testCase.field}`);
+    }
+    if (testCase.area && !runs.every((r) => r.args.some((a) => a.area === testCase.area))) {
+      flags.push(`area≠${testCase.area}`);
+    }
+    if (
+      testCase.urlIncludes &&
+      !runs.every((r) => r.urls.some((url) => url.includes(testCase.urlIncludes)))
+    ) {
+      flags.push(`url≠${testCase.urlIncludes}`);
     }
 
     console.log(

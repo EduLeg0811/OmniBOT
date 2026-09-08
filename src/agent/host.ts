@@ -36,7 +36,7 @@ export type AgentSourceFilesResponse = {
  * (`link`), consultar a API (`api`) e o link do rodapé do card. */
 export type AgentEvent = {
   intent: string;
-  via: "link" | "api" | "card-footer";
+  via: "impression" | "link" | "api" | "card-footer";
   detection: string;
   meta?: Record<string, string>;
 };

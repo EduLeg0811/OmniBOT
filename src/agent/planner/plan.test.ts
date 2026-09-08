@@ -1,253 +1,196 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import {
+  buildAgentResponseContext,
+  normalizePlannerPayload,
+  type PlannerPayload,
+} from "@/agent/planner/plan";
+import { actionsFromMatches } from "@/agent/tools/registry";
+import type { AgentContext, AgentMatch } from "@/agent/types";
 
-import { planAgent } from "@/agent/planner/plan";
-import type { AgentContext } from "@/agent/types";
-
-function context(userText: string): AgentContext {
+function context(presentation: "classic" | "citations" = "classic"): AgentContext {
   return {
-    userText,
-    settings: {
-      enabled: true,
-      prompt: "",
-      presentation: "citations",
-      followUpSuggestions: true,
-    },
+    userText: "pergunta",
+    semanticSourceIds: ["LO"],
+    hasFileSearch: true,
+    settings: { enabled: true, prompt: "", presentation, followUpSuggestions: true },
     host: {
-      apiBase: "http://main-server.test",
+      apiBase: "http://test",
       english: false,
-      vectorStoreId: "CONSTECA",
+      vectorStoreId: "base",
       logEvent: () => undefined,
     },
-    semanticSourceIds: ["lo", "dac"],
-    hasFileSearch: true,
-    threadId: "thread-1",
+    threadId: "thread",
   };
 }
+const defaults = { field: "texto", book: "", area: "", resource: "", style: "" };
+const action = (intent: string, term = "", confidence = 0.9, extra = {}) => ({
+  intent,
+  term,
+  confidence,
+  ...defaults,
+  ...extra,
+});
+const payload = (
+  responseMode: string,
+  responseConfidence = 0.9,
+  actions: unknown[] = [],
+  answer = "",
+): PlannerPayload => ({
+  responseMode,
+  responseConfidence,
+  actions,
+  answer,
+  reason: "test",
+});
 
-function classifierResponse(payload: unknown) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: JSON.stringify(payload) }))),
-  );
-}
-
-describe("agent planner", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("encaminha saudações para Luna, sem regra local", async () => {
-    classifierResponse({
-      actions: [],
-      route: "direct",
-      confidence: 0.99,
-      reason: "simple_greeting",
-      answer: "Olá! Como posso ajudar?",
-    });
-
-    await expect(planAgent(context("bom dia"))).resolves.toMatchObject({
-      route: "direct",
-      actions: [],
-      answer: "Olá! Como posso ajudar?",
-      origin: "luna",
-      confidence: 0.99,
-    });
+describe("normalização do planejador Agent v2", () => {
+  it.each(["full", "action_only", "direct", "clarify", "corpus"])("normaliza %s", (mode) => {
+    const actions = mode === "action_only" ? [action("bibliomancia")] : [];
+    const answer = ["action_only", "direct", "clarify", "corpus"].includes(mode)
+      ? "Resposta curta."
+      : "";
+    const plan = normalizePlannerPayload(
+      payload(mode, 0.95, actions, answer),
+      context("citations"),
+    );
+    expect(plan.responseMode).toBe(mode);
   });
-
-  it("preserva a resposta completa quando há ação complementar", async () => {
-    classifierResponse({
-      actions: [{ intent: "search_book", term: "Monja", field: "", book: "" }],
+  it("não suprime pergunta substantiva que também tem ação", () => {
+    const plan = normalizePlannerPayload(
+      payload("full", 0.98, [action("icge", "", 0.92, { area: "memoria" })]),
+      context(),
+    );
+    expect(plan).toMatchObject({ responseMode: "full", route: "full", answer: "" });
+    expect(plan.actions[0]).toMatchObject({ id: "icge", destination: "Memória CCCI" });
+  });
+  it("rebaixa action_only de confiança média, preservando o pill", () => {
+    const plan = normalizePlannerPayload(
+      payload("action_only", 0.7, [action("search_book", "tenepes")], "Preparada."),
+      context(),
+    );
+    expect(plan).toMatchObject({
+      responseMode: "full",
+      reason: "action_only_requires_high_confidence",
+    });
+    expect(plan.actions).toHaveLength(1);
+  });
+  it("força full abaixo de 0,55 e preserva somente ação confiável", () => {
+    const plan = normalizePlannerPayload(
+      payload("direct", 0.4, [
+        action("search_book", "tenepes", 0.8),
+        action("search_verbete", "tenepes", 0.4),
+      ]),
+      context(),
+    );
+    expect(plan).toMatchObject({ responseMode: "full", reason: "low_confidence" });
+    expect(plan.actions.map((item) => item.id)).toEqual(["search_book"]);
+  });
+  it("exige alta confiança para clarify", () => {
+    expect(
+      normalizePlannerPayload(payload("clarify", 0.7, [], "Qual obra?"), context()).responseMode,
+    ).toBe("full");
+    expect(
+      normalizePlannerPayload(payload("clarify", 0.9, [], "Qual obra?"), context()).responseMode,
+    ).toBe("clarify");
+  });
+  it("no Clássico corpus sempre vira full, sem virar direct", () => {
+    const plan = normalizePlannerPayload(
+      payload("corpus", 0.99, [action("search_book", "tenepes")], "Trechos."),
+      context("classic"),
+    );
+    expect(plan).toMatchObject({
+      responseMode: "full",
       route: "full",
-      confidence: 0.99,
-      reason: "complementary_search",
-      answer: "",
+      reason: "classic_corpus_to_full",
     });
-
-    await expect(planAgent(context("onde procuro Monja?"))).resolves.toMatchObject({
-      route: "full",
-      answer: "",
-      actions: [{ id: "search_book" }],
-    });
+    expect(plan.actions).toHaveLength(1);
   });
-
-  it("mantém a rota corpus sem ações externas", async () => {
-    classifierResponse({
-      actions: [{ intent: "search_book", term: "Monja", field: "", book: "" }],
-      route: "corpus",
-      confidence: 0.99,
-      reason: "literal_search",
-      answer: "",
-    });
-
-    await expect(planAgent(context("busque Monja no corpus"))).resolves.toMatchObject({
-      route: "corpus",
-      actions: [],
-      answer: "Os trechos relevantes do corpus estão apresentados abaixo.",
-    });
+  it("action_only sem ação válida vira full", () => {
+    expect(
+      normalizePlannerPayload(
+        payload("action_only", 0.99, [action("search_book", "", 0.9)], "Abra."),
+        context(),
+      ).responseMode,
+    ).toBe("full");
   });
-
-  it("faz fallback ao modelo principal quando o classificador é inválido", async () => {
-    classifierResponse({ actions: [], route: "unexpected", answer: "" });
-
-    await expect(planAgent(context("explique a cosmoética"))).resolves.toMatchObject({
-      route: "full",
-      actions: [],
-      answer: "",
-    });
+  it("substitui introdução com alegação de resultado por texto neutro do catálogo", () => {
+    const plan = normalizePlannerPayload(
+      payload("action_only", 0.99, [action("search_book", "tenepes")], "Encontrei 12 resultados."),
+      context(),
+    );
+    expect(plan.answer).toContain("está preparada");
+    expect(plan.answer).not.toMatch(/encontrei|12/i);
   });
-
-  it("converte corpus em pills externos no modo Clássico", async () => {
-    classifierResponse({
-      actions: [{ intent: "search_book", term: "Monja", field: "", book: "" }],
-      route: "corpus",
-      confidence: 0.99,
-      reason: "literal_search",
-      answer: "",
-    });
-
-    await expect(
-      planAgent({
-        ...context("busque Monja no corpus clássico"),
-        settings: {
-          enabled: true,
-          prompt: "",
-          presentation: "classic",
-          followUpSuggestions: true,
-        },
-      }),
-    ).resolves.toMatchObject({
-      route: "direct",
-      answer: "Clique nos botões abaixo para expandir sua pesquisa.",
-      actions: [{ id: "search_book" }],
-    });
+  it("substitui introdução longa por texto neutro do catálogo", () => {
+    const plan = normalizePlannerPayload(
+      payload("action_only", 0.99, [action("bibliomancia")], "x".repeat(400)),
+      context(),
+    );
+    expect(plan.answer).toContain("sorteio");
+    expect(plan.answer.length).toBeLessThan(200);
   });
-
-  it("faz fallback completo quando Clássico recebe corpus sem ação externa", async () => {
-    classifierResponse({
-      actions: [],
-      route: "corpus",
-      confidence: 0.99,
-      reason: "literal_search",
-      answer: "",
-    });
-
-    await expect(
-      planAgent({
-        ...context("busca genérica no corpus clássico"),
-        settings: {
-          enabled: true,
-          prompt: "",
-          presentation: "classic",
-          followUpSuggestions: true,
-        },
-      }),
-    ).resolves.toMatchObject({ route: "full", actions: [], answer: "" });
+  it("gera contexto confiável para a resposta principal", () => {
+    const plan = normalizePlannerPayload(
+      payload("full", 0.99, [action("search_verbete", "tenepes", 0.9, { field: "titulo" })]),
+      context(),
+    );
+    const prompt = buildAgentResponseContext(plan, false);
+    expect(prompt).toContain("ainda não consultado");
+    expect(prompt).toContain("não afirme inexistência");
   });
+});
 
-  it("rebaixa corpus de confiança média para resposta completa", async () => {
-    classifierResponse({
-      actions: [{ intent: "search_book", term: "cosmoética", field: "", book: "" }],
-      route: "corpus",
-      confidence: 0.65,
-      reason: "possible_search",
-      answer: "",
-    });
-
-    await expect(planAgent(context("procure cosmoética nas fontes"))).resolves.toMatchObject({
-      route: "full",
-      actions: [{ id: "search_book" }],
-      proposedRoute: "corpus",
-      reason: "corpus_requires_high_confidence",
-    });
+describe("URLs e parâmetros", () => {
+  it("usa book_code canônico, field e LexiCons em Cosmovisão", () => {
+    const matches: AgentMatch[] = [
+      { intent: "search_book", term: "tenepes", confidence: 1, book: "EXP" },
+      { intent: "consulta_lexicons", term: "altruísmo", confidence: 1 },
+    ];
+    const result = actionsFromMatches(matches, context());
+    expect(result[0]!.href).toContain("books=EXP");
+    expect(result[1]!.href).toContain("q=altru%C3%ADsmo");
+    expect(result[1]!.href).toContain("autostart=1");
+    expect(result[1]!.href).not.toContain("mode=");
   });
-
-  it("mantém esclarecimento objetivo quando Luna o justificar", async () => {
-    classifierResponse({
-      actions: [],
-      route: "clarify",
-      confidence: 0.7,
-      reason: "missing_source_scope",
-      answer: "Você quer pesquisar em livros ou em verbetes?",
-    });
-
-    await expect(planAgent(context("procure isso"))).resolves.toMatchObject({
-      route: "clarify",
-      answer: "Você quer pesquisar em livros ou em verbetes?",
-    });
+  it("mapeia as oito macroáreas oficiais do ICGE", () => {
+    const areas = [
+      "agenda",
+      "instituicoes",
+      "publicacoes",
+      "enciclopedia",
+      "memoria",
+      "videos",
+      "autopesquisa",
+      "holociclo",
+    ];
+    for (const area of areas) {
+      const [result] = actionsFromMatches(
+        [{ intent: "icge", term: "", confidence: 1, area }],
+        context(),
+      );
+      expect(result!.href).toMatch(/^https:\/\/www\.icge\.org\.br\/\?page_id=\d+$/);
+    }
   });
-
-  it("faz fallback quando a confiança é baixa", async () => {
-    classifierResponse({
-      actions: [],
-      route: "direct",
-      confidence: 0.2,
-      reason: "uncertain",
-      answer: "Talvez.",
-    });
-
-    await expect(planAgent(context("isso"))).resolves.toMatchObject({
-      route: "full",
-      reason: "low_confidence",
-      proposedRoute: "direct",
-    });
-  });
-
-  it("trata confiança ausente como resposta inválida", async () => {
-    classifierResponse({
-      actions: [{ intent: "search_book", term: "tenepes", field: "", book: "" }],
-      route: "direct",
-      reason: "literal_search",
-      answer: "",
-    });
-
-    await expect(planAgent(context("busque tenepes"))).resolves.toMatchObject({
-      route: "full",
-      actions: [],
-      confidence: 0,
-      reason: "invalid_confidence",
-      proposedRoute: "direct",
-      origin: "fallback",
-    });
-  });
-
-  it("mantém links contextuais na rota full", async () => {
-    classifierResponse({
-      actions: [
-        { intent: "encyclossapiens", term: "", field: "", book: "" },
-        { intent: "acervo_icge", term: "", field: "", book: "" },
-      ],
-      route: "full",
-      confidence: 0.94,
-      reason: "contextual_resources",
-      answer: "",
-    });
-
-    await expect(
-      planAgent(context("Explique as regras e indique o acervo histórico")),
-    ).resolves.toMatchObject({
-      route: "full",
-      actions: [
-        { id: "encyclossapiens", href: "https://encyclossapiens.org/kit-verbetografo/" },
-        { id: "acervo_icge", href: "https://www.icge.org.br/" },
-      ],
-      origin: "luna",
-    });
-  });
-
-  it("deixa Luna decidir a lista de fontes", async () => {
-    classifierResponse({
-      actions: [{ intent: "list_sources", term: "", field: "", book: "" }],
-      route: "direct",
-      confidence: 0.98,
-      reason: "list_loaded_sources",
-      answer: "",
-    });
-
-    await expect(
-      planAgent(context("Quais fontes de consulta você possui?")),
-    ).resolves.toMatchObject({
-      route: "direct",
-      actions: [{ id: "list_sources" }],
-      origin: "luna",
-      answer: "As fontes de consulta atualmente carregadas estão listadas abaixo.",
-    });
+  it("constrói verbetes, CCG, bibliografias, Bibliomancia e recurso explícito", () => {
+    const cases: AgentMatch[] = [
+      { intent: "search_verbete", term: "Vieira", confidence: 1, field: "autor" },
+      { intent: "search_conscienciograma", term: "liderança", confidence: 1 },
+      {
+        intent: "bibliografia_livros",
+        term: "Projeciologia",
+        confidence: 1,
+        book: "PROJ",
+        style: "bee",
+      },
+      { intent: "bibliomancia", term: "", confidence: 1 },
+      { intent: "open_resource", term: "", confidence: 1, resource: "periodicos" },
+    ];
+    const hrefs = cases.map((item) => actionsFromMatches([item], context())[0]!.href);
+    expect(hrefs[0]).toContain("field=autor");
+    expect(hrefs[1]).toContain("index_search_ccg.html");
+    expect(hrefs[2]).toContain("sigla=PROJ");
+    expect(hrefs[2]).toContain("style=bee");
+    expect(hrefs[3]).toContain("autostart=1");
+    expect(hrefs[4]).toContain("periodicos.conscienciologia.org.br");
   });
 });
