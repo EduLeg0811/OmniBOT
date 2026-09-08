@@ -4,7 +4,10 @@ import { normalizeAgentSettings } from "@/agent";
 import {
   CONSCIENTIOLOGICAL_WORD_OFFSET,
   DEFAULT_SETTINGS,
+  MODELS,
   buildSystemPrompt,
+  modelsFor,
+  normalizeReasoningEffortForModel,
   normalizeSemanticContextLimit,
   settingsForProfile,
   settingsForPublicUser,
@@ -13,6 +16,27 @@ import {
 } from "@/lib/chat-settings";
 
 describe("chat settings", () => {
+  it("oferece o Astra somente no catálogo administrativo", () => {
+    expect(modelsFor(true).map((model) => model.id)).toContain("gpt-6-astra");
+    expect(modelsFor(false).map((model) => model.id)).not.toContain("gpt-6-astra");
+    expect(MODELS.find((model) => model.id === "gpt-6-astra")).toMatchObject({
+      label: "ConsBOT Astra",
+      adminOnly: true,
+      supportsNoneReasoning: false,
+    });
+  });
+
+  it("troca o raciocínio none por low ao selecionar Astra", () => {
+    expect(normalizeReasoningEffortForModel("gpt-6-astra", "none")).toBe("low");
+    expect(normalizeReasoningEffortForModel("gpt-6-astra", "high")).toBe("high");
+    expect(normalizeReasoningEffortForModel("gpt-5.6-luna", "none")).toBe("none");
+  });
+
+  it("restaura o modelo do perfil quando uma configuração Astra chega ao modo público", () => {
+    const settings = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-astra" });
+    expect(settings.model).toBe("gpt-5.6-terra");
+  });
+
   it("inicializa novas conversas com o preset padrão de introdutor", () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
       profile: "introdutor",
@@ -27,6 +51,7 @@ describe("chat settings", () => {
       enabled: true,
       prompt: "",
       presentation: "classic",
+      followUpSuggestions: true,
     });
   });
 
@@ -34,24 +59,36 @@ describe("chat settings", () => {
     const settings = settingsForProfile("tutor");
     expect(settings.retrievalMode).toBe("standard");
     expect(settings.semanticSourceIds).toEqual(["lo", "dac"]);
-    expect(settings.semanticContextLimit).toBe(8);
+    expect(settings.semanticContextLimit).toBe(10);
   });
 
   it("limita a recuperação documental ao intervalo de 1 a 200 citações", () => {
     expect(normalizeSemanticContextLimit(0)).toBe(1);
     expect(normalizeSemanticContextLimit(201)).toBe(200);
     expect(normalizeSemanticContextLimit(57.6)).toBe(58);
-    expect(normalizeSemanticContextLimit(undefined)).toBe(8);
+    expect(normalizeSemanticContextLimit(undefined)).toBe(10);
   });
 
-  it("força modo padrão e remove fontes para usuário público", () => {
+  it("força modo padrão, remove fontes e mantém somente o Agent clássico para usuário público", () => {
     const settings = settingsForPublicUser({
       ...DEFAULT_SETTINGS,
       retrievalMode: "standard",
       semanticSourceIds: ["lo", "dac"],
+      agent: {
+        enabled: false,
+        prompt: "instrução administrativa",
+        presentation: "citations",
+        followUpSuggestions: false,
+      },
     });
     expect(settings.retrievalMode).toBe("standard");
     expect(settings.semanticSourceIds).toEqual([]);
+    expect(settings.agent).toEqual({
+      enabled: true,
+      prompt: "",
+      presentation: "classic",
+      followUpSuggestions: true,
+    });
   });
 
   it("normaliza o modo manual legado para busca padrão", () => {
@@ -75,6 +112,7 @@ describe("chat settings", () => {
 
   it("normaliza conversas antigas para a apresentação Citações do Agent", () => {
     expect(normalizeAgentSettings({ enabled: true, prompt: "" }).presentation).toBe("citations");
+    expect(normalizeAgentSettings({ enabled: true, prompt: "" }).followUpSuggestions).toBe(true);
   });
 
   it("acrescenta 200 palavras à meta quando o formato for conscienciological", () => {
@@ -85,16 +123,16 @@ describe("chat settings", () => {
       responseFormat: "chatgpt" as const,
       responseDepth: "synthetic" as const,
     };
-    expect(targetWordsForSettings(chatGptSettings)).toBe(400);
+    expect(targetWordsForSettings(chatGptSettings)).toBe(300);
 
     const consSettings = {
       ...DEFAULT_SETTINGS,
       responseFormat: "conscienciological" as const,
       responseDepth: "synthetic" as const,
     };
-    expect(targetWordsForSettings(consSettings)).toBe(600);
+    expect(targetWordsForSettings(consSettings)).toBe(500);
 
     const prompt = buildSystemPrompt(consSettings);
-    expect(prompt).toContain("cerca de 600 palavras");
+    expect(prompt).toContain("cerca de 500 palavras");
   });
 });

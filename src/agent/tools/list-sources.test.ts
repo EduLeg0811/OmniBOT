@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentContext } from "@/agent/types";
-import {
-  listSources,
-  sourceListAnswer,
-  sourceListErrorAnswer,
-} from "@/agent/tools/list-sources";
+import { listSources, sourceListAnswer, sourceListErrorAnswer } from "@/agent/tools/list-sources";
 
 function context(vectorStoreId = "CONSTECA"): AgentContext {
   return {
@@ -14,6 +10,7 @@ function context(vectorStoreId = "CONSTECA"): AgentContext {
       enabled: true,
       prompt: "",
       presentation: "citations",
+      followUpSuggestions: true,
     },
     host: {
       apiBase: "http://main-server.test",

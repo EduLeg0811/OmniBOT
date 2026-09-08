@@ -1,20 +1,43 @@
 import { AGENT_SETTINGS_DEFAULT, normalizeAgentSettings, type AgentSettings } from "@/agent";
 
+export const ASTRA_MODEL_ID = "gpt-6-astra" as const;
+
 export const MODELS = [
-  { id: "gpt-5.6-luna", label: "ConsBOT Luna", description: "Rápido para conversas do dia a dia." },
+  {
+    id: "gpt-5.6-luna",
+    label: "ConsBOT Luna",
+    description: "Rápido para conversas do dia a dia.",
+    adminOnly: false,
+    supportsNoneReasoning: true,
+  },
   {
     id: "gpt-5.6-terra",
     label: "ConsBOT Terra",
     description: "Equilíbrio entre alta qualidade e velocidade.",
+    adminOnly: false,
+    supportsNoneReasoning: true,
   },
   {
     id: "gpt-5.6-sol",
     label: "ConsBOT Sol",
     description: "Raciocínio avançado para tarefas complexas.",
+    adminOnly: false,
+    supportsNoneReasoning: true,
+  },
+  {
+    id: ASTRA_MODEL_ID,
+    label: "ConsBOT Astra",
+    description: "Máxima capacidade para tarefas complexas.",
+    adminOnly: true,
+    supportsNoneReasoning: false,
   },
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]["id"];
+
+export function modelsFor(isAdmin: boolean) {
+  return MODELS.filter((model) => isAdmin || !model.adminOnly);
+}
 
 export const VECTOR_STORES = [
   { id: "none", label: "Nenhuma", description: "Responde sem consultar base RAG." },
@@ -49,15 +72,26 @@ export const RESPONSE_FORMATS: Array<{
   label: string;
   description: string;
 }> = [
-    { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
-    {
-      id: "conscienciological",
-      label: "Confor CONS",
-      description: "Estilo da Conscienciologia",
-    },
-  ];
+  { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
+  {
+    id: "conscienciological",
+    label: "Confor CONS",
+    description: "Estilo da Conscienciologia",
+  },
+];
 
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
+
+export function modelSupportsNoneReasoning(modelId: ModelId): boolean {
+  return MODELS.find((model) => model.id === modelId)?.supportsNoneReasoning ?? true;
+}
+
+export function normalizeReasoningEffortForModel(
+  modelId: ModelId,
+  effort: ReasoningEffort,
+): ReasoningEffort {
+  return effort === "none" && !modelSupportsNoneReasoning(modelId) ? "low" : effort;
+}
 
 export type ResponseDepthId = "synthetic" | "balanced" | "complete";
 export type TextVerbosity = "low" | "medium" | "high";
@@ -110,7 +144,6 @@ export function normalizeDepthWordTarget(depth: ResponseDepthId, value: number):
   return Math.round(clamped / DEPTH_WORD_STEP) * DEPTH_WORD_STEP;
 }
 
-
 export const CONSCIENTIOLOGICAL_WORD_OFFSET = 200;
 
 export function targetWordsForSettings(settings: ChatSettings): number {
@@ -130,11 +163,11 @@ export const PROFILES: Array<{
   label: string;
   description: string;
 }> = [
-    { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
-    { id: "tutor", label: "Tutor", description: "Didático e cordial" },
-    { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
-    { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
-  ];
+  { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
+  { id: "tutor", label: "Tutor", description: "Didático e cordial" },
+  { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
+  { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
+];
 
 export const PROFILE_INSTRUCTIONS: Record<ProfileId, string> = {
   preceptor: `## Perfil: Preceptor
@@ -289,7 +322,6 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
     vectorStoreId: "vs_6a7f75cd0be48191b3f3960a518c6ff3",
     vectorMaxResults: 20,
   },
-
 };
 
 export interface ChatSettings extends ProfileLlmDefaults {
@@ -407,9 +439,14 @@ export function settingsForPublicUser(settings: ChatSettings): ChatSettings {
     retrievalMode: "standard",
     semanticSourceIds: [],
     semanticContextLimit: normalizeSemanticContextLimit(settings.semanticContextLimit),
+    agent: {
+      enabled: true,
+      prompt: "",
+      presentation: "classic",
+      followUpSuggestions: true,
+    },
   };
 }
-
 
 export function buildSystemPrompt(settings: ChatSettings): string {
   const modules = [

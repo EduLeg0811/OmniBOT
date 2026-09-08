@@ -6,7 +6,12 @@ import type { AgentContext } from "@/agent/types";
 function context(userText: string): AgentContext {
   return {
     userText,
-    settings: { enabled: true, prompt: "", presentation: "citations" },
+    settings: {
+      enabled: true,
+      prompt: "",
+      presentation: "citations",
+      followUpSuggestions: true,
+    },
     host: {
       apiBase: "http://main-server.test",
       english: false,
@@ -101,7 +106,12 @@ describe("agent planner", () => {
     await expect(
       planAgent({
         ...context("busque Monja no corpus clássico"),
-        settings: { enabled: true, prompt: "", presentation: "classic" },
+        settings: {
+          enabled: true,
+          prompt: "",
+          presentation: "classic",
+          followUpSuggestions: true,
+        },
       }),
     ).resolves.toMatchObject({
       route: "direct",
@@ -122,7 +132,12 @@ describe("agent planner", () => {
     await expect(
       planAgent({
         ...context("busca genérica no corpus clássico"),
-        settings: { enabled: true, prompt: "", presentation: "classic" },
+        settings: {
+          enabled: true,
+          prompt: "",
+          presentation: "classic",
+          followUpSuggestions: true,
+        },
       }),
     ).resolves.toMatchObject({ route: "full", actions: [], answer: "" });
   });

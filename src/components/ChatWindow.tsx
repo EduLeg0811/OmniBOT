@@ -2,7 +2,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, convertToModelMessages } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowUp, Copy, Database, RefreshCw, Share2 } from "lucide-react";
+import { ArrowUp, Copy, Database, RefreshCw, Share2, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,10 @@ import {
   sourceListAnswer,
   sourceListErrorAnswer,
   triageAgent,
+  AGENT_FOLLOW_UP_SCHEMA,
+  agentFollowUpPrompt,
+  normalizeAgentFollowUpQuestion,
+  type AgentFollowUpPayload,
   type AgentAction,
   type AgentHost,
   type AgentTriage,
@@ -90,12 +94,14 @@ function semanticAuditMeta(context: SemanticContextTurn | null) {
 }
 
 function pillsForAudit(actions: AgentAction[]): AgentPillMetadata[] {
-  return actions.filter((action) => action.kind === "open-url").map((action) => ({
-    id: action.id,
-    label: action.label,
-    link: action.href,
-    ...(action.meta ? { parameters: action.meta } : {}),
-  }));
+  return actions
+    .filter((action) => action.kind === "open-url")
+    .map((action) => ({
+      id: action.id,
+      label: action.label,
+      link: action.href,
+      ...(action.meta ? { parameters: action.meta } : {}),
+    }));
 }
 
 function agentPillsAuditMeta(agentPills: AgentPillMetadata[] | undefined) {
@@ -156,6 +162,7 @@ function turnConfigSnapshot(settings: ChatSettings): TurnConfigSnapshot {
     agent: {
       enabled: settings.agent.enabled,
       presentation: settings.agent.presentation ?? "citations",
+      followUpSuggestions: settings.agent.followUpSuggestions,
     },
   };
 }
@@ -398,11 +405,17 @@ export function ChatWindow({
   // interface precisa para não parecer ociosa nesse intervalo.
   const submittingRef = useRef(false);
   const [isPreparing, setIsPreparing] = useState(false);
-  const [preparationStage, setPreparationStage] = useState<"triage" | "semantic" | "sources">("triage");
+  const [preparationStage, setPreparationStage] = useState<"triage" | "semantic" | "sources">(
+    "triage",
+  );
   const preparationAbortRef = useRef<AbortController | null>(null);
   const preparationCancelledRef = useRef(false);
   const pendingEchoIdRef = useRef<string | null>(null);
   const pendingAgentPillsRef = useRef<AgentPillMetadata[]>([]);
+  const pendingFollowUpRef = useRef<{
+    userText: string;
+    isEnglish: boolean;
+  } | null>(null);
   const auditCompleteRef = useRef(onAuditComplete);
   const initialUrlQuestionProcessedRef = useRef(false);
   auditCompleteRef.current = onAuditComplete;
@@ -517,44 +530,137 @@ export function ChatWindow({
     [],
   );
 
-  const { messages, sendMessage, status, stop, setMessages, regenerate } =
-    useChat<ConsBotUIMessage>({
-      id: threadId,
-      messages: initialMessages,
-      transport,
-      onData: (part) => {
-        if (part.type === "data-llmMeta") openaiAuditRef.current = part.data;
-      },
-      onError: (error) => {
-        if (pendingAccessLogRef.current) {
-          const agentPills = pendingAgentPillsRef.current;
-          logFeatureAccess({
-            module: "consbot",
-            action: pendingAccessLogRef.current.action,
-            label: pendingAccessLogRef.current.label,
-            value: pendingAccessLogRef.current.value,
-            chat_id: pendingAccessLogRef.current.chat_id,
-            meta: {
-              ...pendingAccessLogRef.current.meta,
-              response: `[Erro: ${error.message || "Não foi possível responder"}]`,
-              ...agentPillsAuditMeta(agentPills),
+  const { messages, sendMessage, status, stop, setMessages } = useChat<ConsBotUIMessage>({
+    id: threadId,
+    messages: initialMessages,
+    transport,
+    onData: (part) => {
+      if (part.type === "data-llmMeta") openaiAuditRef.current = part.data;
+    },
+    onError: (error) => {
+      if (pendingAccessLogRef.current) {
+        const agentPills = pendingAgentPillsRef.current;
+        logFeatureAccess({
+          module: "consbot",
+          action: pendingAccessLogRef.current.action,
+          label: pendingAccessLogRef.current.label,
+          value: pendingAccessLogRef.current.value,
+          chat_id: pendingAccessLogRef.current.chat_id,
+          meta: {
+            ...pendingAccessLogRef.current.meta,
+            response: `[Erro: ${error.message || "Não foi possível responder"}]`,
+            ...agentPillsAuditMeta(agentPills),
+          },
+        });
+        pendingAccessLogRef.current = null;
+      }
+      streamStartedRef.current = false;
+      pendingAgentPillsRef.current = [];
+      pendingFollowUpRef.current = null;
+      if (pendingAuditId.current) {
+        auditCompleteRef.current(
+          pendingAuditId.current,
+          { response: { error: error.message } },
+          "error",
+        );
+        pendingAuditId.current = null;
+      }
+      toast.error(error.message || "Não foi possível responder agora.");
+    },
+  });
+
+  const generateAgentFollowUp = useCallback(
+    async ({
+      assistantMessageId,
+      userText,
+      assistantText,
+      english,
+    }: {
+      assistantMessageId: string;
+      userText: string;
+      assistantText: string;
+      english: boolean;
+    }) => {
+      if (!assistantText.trim()) return;
+
+      const requestBody = {
+        messages: [
+          {
+            role: "user",
+            content: agentFollowUpPrompt(userText, assistantText, english),
+          },
+        ],
+        model: "gpt-5.6-luna",
+        reasoningEffort: "none",
+        verbosity: "low",
+        responseSchema: AGENT_FOLLOW_UP_SCHEMA,
+        responseSchemaName: english ? "agent_follow_up" : "continuidade_agent",
+        responseSchemaDescription: english
+          ? "One concise follow-up question derived from the assistant response, ideally 3 and at most 5 words."
+          : "Uma pergunta concisa de continuidade derivada da resposta, idealmente com 3 e no máximo 5 palavras.",
+      };
+      const auditId = onAuditStart({
+        endpoint: `${API_BASE}/api/llm`,
+        sentAt: new Date().toISOString(),
+        body: requestBody,
+      });
+
+      try {
+        const response = await fetch(`${API_BASE}/api/llm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        const result = (await response.json()) as {
+          content?: string;
+          detail?: string;
+          request?: unknown;
+          responseId?: string | null;
+          model?: string;
+          usage?: unknown;
+        };
+        if (!response.ok) {
+          throw new Error(result.detail || "Não foi possível gerar a pergunta de continuidade.");
+        }
+
+        const parsed = result.content ? (JSON.parse(result.content) as AgentFollowUpPayload) : {};
+        const question = normalizeAgentFollowUpQuestion(parsed.question);
+        if (!question) {
+          throw new Error("A pergunta de continuidade não respeitou o limite de cinco palavras.");
+        }
+
+        setMessages((existing) =>
+          existing.map((message) =>
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  metadata: { ...message.metadata, agentFollowUpQuestion: question },
+                }
+              : message,
+          ),
+        );
+        onAuditComplete(auditId, {
+          openaiRequest: result.request,
+          response: { responseId: result.responseId, model: result.model, usage: result.usage },
+          uiResponse: { question, assistantMessageId },
+        });
+      } catch (error) {
+        onAuditComplete(
+          auditId,
+          {
+            response: {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Não foi possível gerar a pergunta de continuidade.",
             },
-          });
-          pendingAccessLogRef.current = null;
-        }
-        streamStartedRef.current = false;
-        pendingAgentPillsRef.current = [];
-        if (pendingAuditId.current) {
-          auditCompleteRef.current(
-            pendingAuditId.current,
-            { response: { error: error.message } },
-            "error",
-          );
-          pendingAuditId.current = null;
-        }
-        toast.error(error.message || "Não foi possível responder agora.");
-      },
-    });
+          },
+          "error",
+        );
+      }
+    },
+    [onAuditComplete, onAuditStart, setMessages],
+  );
 
   const restoredRef = useRef(false);
   useEffect(() => {
@@ -572,7 +678,9 @@ export function ChatWindow({
   const hasVisibleAssistantContent = hasAssistantMessage && messageHasVisibleContent(lastMessage);
   const isAwaitingFirstToken = isBusy && !hasVisibleAssistantContent;
 
-  const [streamWaitStage, setStreamWaitStage] = useState<"initial" | "searching" | "synthesizing">("initial");
+  const [streamWaitStage, setStreamWaitStage] = useState<"initial" | "searching" | "synthesizing">(
+    "initial",
+  );
 
   useEffect(() => {
     if (!isAwaitingFirstToken) {
@@ -602,9 +710,7 @@ export function ChatWindow({
           : "Consultando fontes complementares...";
       }
       if (preparationStage === "sources") {
-        return isEnglish
-          ? "Loading consultation sources..."
-          : "Carregando fontes de consulta...";
+        return isEnglish ? "Loading consultation sources..." : "Carregando fontes de consulta...";
       }
       return isEnglish ? "Thinking..." : "Pensando...";
     }
@@ -665,6 +771,8 @@ export function ChatWindow({
     // o texto dela alinharia a pergunta desta rodada com a resposta da anterior.
     const isFresh = Boolean(lastAssistant) && lastAssistant?.id !== baselineAssistantIdRef.current;
     const assistantText = isFresh && lastAssistant ? getMessageText(lastAssistant) : "";
+    const followUpContext = pendingFollowUpRef.current;
+    pendingFollowUpRef.current = null;
     streamStartedRef.current = false;
     if (pendingAccessLogRef.current) {
       const agentPills = pendingAgentPillsRef.current;
@@ -720,11 +828,20 @@ export function ChatWindow({
       pendingAgentPillsRef.current = [];
       openaiAuditRef.current = null;
     }
-  }, [isBusy, messages, onAuditComplete, setMessages]);
+    if (isFresh && lastAssistant && assistantText && followUpContext) {
+      void generateAgentFollowUp({
+        assistantMessageId: lastAssistant.id,
+        userText: followUpContext.userText,
+        assistantText,
+        english: followUpContext.isEnglish,
+      });
+    }
+  }, [generateAgentFollowUp, isBusy, messages, onAuditComplete, setMessages]);
 
   const submit = useCallback(
     async (text: string) => {
       pendingAgentPillsRef.current = [];
+      pendingFollowUpRef.current = null;
       const value = text.trim();
       // `isBusy` só passa a valer quando o sendMessage vai à rede, e antes
       // dele há uma triagem que pode levar segundos. Sem esta trava, um
@@ -807,27 +924,26 @@ export function ChatWindow({
           host: agentHost,
           threadId,
         };
-        const triage = manualCorpus
-          ? null
-          : await triageAgent(agentContext);
+        const triage = manualCorpus ? null : await triageAgent(agentContext);
 
         if (preparationCancelledRef.current) return;
 
         const classifierTrace = triage?.classifierResponse
           ? { model: "ConsBOT Luna", response: triage.classifierResponse }
           : undefined;
-        const agentPlan = triage && triage.origin !== "bypass"
-          ? {
-              route: triage!.mode,
-              actions: triage!.actions,
-              presentation: current.agent.presentation ?? "citations",
-              confidence: triage.confidence,
-              reason: triage.reason,
-              origin: triage.origin,
-              ...(triage.proposedRoute ? { proposedRoute: triage.proposedRoute } : {}),
-              ...(triage.durationMs === undefined ? {} : { durationMs: triage.durationMs }),
-            }
-          : undefined;
+        const agentPlan =
+          triage && triage.origin !== "bypass"
+            ? {
+                route: triage!.mode,
+                actions: triage!.actions,
+                presentation: current.agent.presentation ?? "citations",
+                confidence: triage.confidence,
+                reason: triage.reason,
+                origin: triage.origin,
+                ...(triage.proposedRoute ? { proposedRoute: triage.proposedRoute } : {}),
+                ...(triage.durationMs === undefined ? {} : { durationMs: triage.durationMs }),
+              }
+            : undefined;
         const agentPills = pillsForAudit(agentPlan?.actions ?? []);
         if (agentPlan) {
           onAuditInteraction({
@@ -972,6 +1088,18 @@ export function ChatWindow({
             ),
             directMessage,
           ]);
+          if (
+            current.agent.enabled &&
+            current.agent.presentation === "classic" &&
+            current.agent.followUpSuggestions
+          ) {
+            void generateAgentFollowUp({
+              assistantMessageId: directMessage.id,
+              userText: value,
+              assistantText: directAnswer,
+              english: isEnglish,
+            });
+          }
           pendingEchoIdRef.current = null;
           pendingAgentPillsRef.current = [];
 
@@ -1025,6 +1153,12 @@ export function ChatWindow({
         setMessages((existing) => existing.filter((message) => message.id !== echoId));
         pendingEchoIdRef.current = null;
         pendingAgentPillsRef.current = agentPills;
+        pendingFollowUpRef.current =
+          current.agent.enabled &&
+          current.agent.presentation === "classic" &&
+          current.agent.followUpSuggestions
+            ? { userText: value, isEnglish }
+            : null;
 
         void sendMessage({
           text: value,
@@ -1046,6 +1180,7 @@ export function ChatWindow({
     },
     [
       agentHost,
+      generateAgentFollowUp,
       isBusy,
       messages,
       isEnglish,
@@ -1242,59 +1377,6 @@ export function ChatWindow({
     }
   }, [isBusy, messages.length, refreshSuggestions, settings.vectorStoreId]);
 
-  const regenerateWithAudit = () => {
-    if (isBusy || isPreparing) return;
-    const current = settingsRef.current;
-    const store = VECTOR_STORES.find((item) => item.id === current.vectorStoreId);
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    const userText = lastUser ? getMessageText(lastUser) : "";
-    if (!lastUser || !userText) return;
-    pendingAccessLogRef.current = {
-      action: "regenerate",
-      label: "Regeneração de resposta",
-      value: userText,
-      chat_id: threadId,
-      meta: {
-        model: MODELS.find((item) => item.id === current.model)?.label ?? current.model,
-        vector_store: store?.label ?? current.vectorStoreId,
-        response_format: current.responseFormat,
-        reasoning_effort: current.reasoningEffort,
-        response_depth: current.responseDepth,
-        target_words: targetWordsForSettings(current),
-        verbosity: verbosityForDepth(current.responseDepth),
-        ...(vectorStoresFor(current.vectorStoreId).length > 0
-          ? { vector_max_results: current.vectorMaxResults }
-          : {}),
-        retrieval_mode: current.retrievalMode,
-      },
-    };
-    openaiAuditRef.current = null;
-    pendingAuditId.current = onAuditStart({
-      endpoint: `${API_BASE}/api/llm`,
-      sentAt: new Date().toISOString(),
-      action: "regenerate",
-      body: {
-        messages,
-        model: settingsRef.current.model,
-        vectorStores: vectorStoresFor(settingsRef.current.vectorStoreId),
-        systemPrompt: buildSystemPrompt(settingsRef.current),
-        reasoningEffort: settingsRef.current.reasoningEffort,
-        response_depth: settingsRef.current.responseDepth,
-        target_words: targetWordsForSettings(settingsRef.current),
-        verbosity: verbosityForDepth(settingsRef.current.responseDepth),
-        ...(vectorStoresFor(settingsRef.current.vectorStoreId).length > 0
-          ? { vectorMaxResults: settingsRef.current.vectorMaxResults }
-          : {}),
-        stream: true,
-      },
-    });
-    baselineAssistantIdRef.current = [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant")?.id;
-    streamStartedRef.current = false;
-    void regenerate();
-  };
-
   const stopWithAudit = () => {
     preparationCancelledRef.current = true;
     preparationAbortRef.current?.abort();
@@ -1370,6 +1452,90 @@ export function ChatWindow({
       if (error instanceof DOMException && error.name === "AbortError") return;
       toast.error("Não foi possível compartilhar a resposta.");
     }
+  };
+
+  const isLatestLiked = Boolean(latestAssistantMessage?.metadata?.liked);
+
+  const toggleLikeLatestResponse = () => {
+    if (!latestAssistantMessage || !latestAssistantText) return;
+    const nextLiked = !isLatestLiked;
+
+    setMessages((existing) =>
+      existing.map((message) =>
+        message.id === latestAssistantMessage.id
+          ? {
+              ...message,
+              metadata: {
+                ...message.metadata,
+                liked: nextLiked,
+              },
+            }
+          : message,
+      ),
+    );
+
+    const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
+    const latestUserText = latestUserMessage ? getMessageText(latestUserMessage) : "";
+
+    const current = settingsRef.current;
+    const store = VECTOR_STORES.find((item) => item.id === current.vectorStoreId);
+    const turnConfig =
+      latestUserMessage?.metadata?.turnConfig || latestAssistantMessage.metadata?.turnConfig;
+    const agentPills = latestAssistantMessage.metadata?.agentPills || [];
+
+    const modelLabel = turnConfig?.model
+      ? (MODELS.find((item) => item.id === turnConfig.model)?.label ?? turnConfig.model)
+      : (MODELS.find((item) => item.id === current.model)?.label ?? current.model);
+    const vectorStoreLabel = turnConfig?.vectorStore
+      ? (VECTOR_STORES.find((item) => item.id === turnConfig.vectorStore)?.label ??
+        turnConfig.vectorStore)
+      : (store?.label ?? current.vectorStoreId);
+
+    const telemetryMeta = {
+      model: modelLabel,
+      vector_store: vectorStoreLabel,
+      response_format: turnConfig?.responseFormat ?? current.responseFormat,
+      reasoning_effort: turnConfig?.reasoning ?? current.reasoningEffort,
+      response_depth: turnConfig?.responseDepth ?? current.responseDepth,
+      target_words: turnConfig?.targetWords ?? targetWordsForSettings(current),
+      verbosity: verbosityForDepth(current.responseDepth),
+      retrieval_mode: turnConfig?.retrieval ?? current.retrievalMode,
+      ...(vectorStoresFor(current.vectorStoreId).length > 0
+        ? { vector_max_results: current.vectorMaxResults }
+        : {}),
+      response: latestAssistantText,
+      liked: nextLiked,
+      feedback: nextLiked ? "like" : "unlike",
+      message_id: latestAssistantMessage.id,
+      ...(agentPills.length > 0
+        ? {
+            pills: agentPills.map((p) => p.label).join(", "),
+            pills_count: agentPills.length,
+            agent_pills: agentPills,
+          }
+        : {}),
+    };
+
+    logFeatureAccess({
+      module: "consbot",
+      action: nextLiked ? "like" : "unlike",
+      label: nextLiked ? "Curtida de resposta" : "Remoção de curtida",
+      value: latestUserText,
+      chat_id: threadId,
+      meta: telemetryMeta,
+    });
+
+    onAuditInteraction({
+      module: "consbot",
+      action: nextLiked ? "like" : "unlike",
+      label: nextLiked ? "Curtida de resposta" : "Remoção de curtida",
+      value: nextLiked ? "like" : "unlike",
+      meta: {
+        messageId: latestAssistantMessage.id,
+        liked: nextLiked,
+        question: latestUserText,
+      },
+    });
   };
 
   return (
@@ -1518,9 +1684,7 @@ export function ChatWindow({
                         return null;
                       })}
                       {waitingForThisAssistant && !hasVisibleContent ? (
-                        <Shimmer className="text-sm">
-                          {thinkingText}
-                        </Shimmer>
+                        <Shimmer className="text-sm">{thinkingText}</Shimmer>
                       ) : null}
                     </MessageContent>
                   </Message>
@@ -1555,6 +1719,24 @@ export function ChatWindow({
                         settings={settings.agent}
                         host={agentHost}
                         userMessage={precedingUser}
+                        followUpQuestion={message.metadata?.agentFollowUpQuestion}
+                        disabled={isBusy}
+                        onFollowUp={(question) => {
+                          logFeatureAccess({
+                            module: "consbot",
+                            action: "pill_click",
+                            label: "Pergunta de continuidade",
+                            value: question,
+                            chat_id: threadId,
+                          });
+                          onAuditInteraction({
+                            module: "agent",
+                            action: "pill_click",
+                            label: "Pergunta de continuidade",
+                            value: question,
+                          });
+                          void submit(question);
+                        }}
                         expandedByDefault
                       />
                     </div>
@@ -1563,11 +1745,7 @@ export function ChatWindow({
               );
             })}
 
-            {showPendingShimmer ? (
-              <Shimmer className="text-sm">
-                {thinkingText}
-              </Shimmer>
-            ) : null}
+            {showPendingShimmer ? <Shimmer className="text-sm">{thinkingText}</Shimmer> : null}
 
             {latestAssistantText && !isBusy ? (
               <div className="flex items-center gap-1">
@@ -1594,12 +1772,34 @@ export function ChatWindow({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="rounded-lg text-muted-foreground hover:text-foreground"
-                  aria-label="Tentar novamente"
-                  title="Tentar novamente"
-                  onClick={() => void regenerateWithAudit()}
+                  className={`rounded-lg transition-colors ${
+                    isLatestLiked
+                      ? "text-primary hover:text-primary/80"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  aria-label={
+                    isLatestLiked
+                      ? isEnglish
+                        ? "Liked (click to remove)"
+                        : "Gostei (clique para remover)"
+                      : isEnglish
+                        ? "Like response"
+                        : "Gostei da resposta"
+                  }
+                  title={
+                    isLatestLiked
+                      ? isEnglish
+                        ? "Liked (click to remove)"
+                        : "Gostei (clique para remover)"
+                      : isEnglish
+                        ? "Like response"
+                        : "Gostei da resposta"
+                  }
+                  onClick={toggleLikeLatestResponse}
                 >
-                  <RefreshCw />
+                  <ThumbsUp
+                    className={`size-4 ${isLatestLiked ? "fill-primary text-primary" : ""}`}
+                  />
                 </Button>
               </div>
             ) : null}

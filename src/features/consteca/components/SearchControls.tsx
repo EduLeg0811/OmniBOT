@@ -18,8 +18,8 @@ export function SearchKindControl({
     >
       {(
         [
-          ["smart", "Inteligente", "Busca por significado", Sparkles],
           ["literal", "Literal", "Termos e expressões", BookOpen],
+          ["smart", "Inteligente", "Busca por significado", Sparkles],
         ] as const
       ).map(([kind, label, description, Icon]) => {
         const active = value === kind;

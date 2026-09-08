@@ -31,6 +31,12 @@ export { AgentSettingsSection } from "@/agent/ui/AgentSettingsSection";
 export { executeAgentAction } from "@/agent/tools/registry";
 export { sourceListAnswer, sourceListErrorAnswer } from "@/agent/tools/list-sources";
 export {
+  AGENT_FOLLOW_UP_SCHEMA,
+  agentFollowUpPrompt,
+  normalizeAgentFollowUpQuestion,
+  type AgentFollowUpPayload,
+} from "@/agent/follow-up";
+export {
   AGENT_SETTINGS_DEFAULT,
   normalizeAgentSettings,
   type AgentPresentation,

@@ -54,6 +54,7 @@ export type TurnConfigSnapshot = {
   agent: {
     enabled: boolean;
     presentation: AgentPresentation;
+    followUpSuggestions: boolean;
   };
 };
 
@@ -93,6 +94,9 @@ export type ConsBotMessageMetadata = {
     durationMs?: number;
   };
   agentPills?: AgentPillMetadata[];
+  /** Pergunta curta sugerida a partir da resposta deste turno. */
+  agentFollowUpQuestion?: string;
+  liked?: boolean;
 };
 
 export type ConsBotUIMessage = UIMessage<ConsBotMessageMetadata, AuditDataParts>;

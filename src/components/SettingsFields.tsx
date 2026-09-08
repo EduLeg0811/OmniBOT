@@ -34,7 +34,10 @@ import {
   MAX_TARGET_WORDS,
   MIN_TARGET_WORDS,
   MODELS,
+  modelSupportsNoneReasoning,
+  modelsFor,
   normalizeDepthWordTarget,
+  normalizeReasoningEffortForModel,
   normalizeSemanticContextLimit,
   normalizeVectorMaxResults,
   PROFILES,
@@ -74,24 +77,51 @@ function SettingsGroup({
   description,
   icon: Icon,
   children,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   title: string;
   description: string;
   icon: LucideIcon;
   children: ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
-  return (
-    <section className="space-y-3 rounded-2xl border border-border/70 bg-secondary/[0.18] p-4">
-      <div className="flex items-start gap-2.5">
-        <div className="mt-0.5 rounded-lg bg-primary/10 p-1.5 text-primary">
-          <Icon className="size-3.5" aria-hidden="true" />
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-foreground">{title}</p>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{description}</p>
-        </div>
+  const [open, setOpen] = useState(defaultOpen);
+  const expanded = !collapsible || open;
+  const heading = (
+    <>
+      <div className="mt-0.5 rounded-lg bg-primary/10 p-1.5 text-primary">
+        <Icon className="size-3.5" aria-hidden="true" />
       </div>
-      {children}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-foreground">{title}</p>
+        <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+      {collapsible ? (
+        <ChevronRight
+          className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
+  );
+
+  return (
+    <section className="rounded-2xl border border-border/70 bg-secondary/[0.18] p-4">
+      {collapsible ? (
+        <button
+          aria-expanded={open}
+          className="flex w-full items-start gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={() => setOpen((current) => !current)}
+          type="button"
+        >
+          {heading}
+        </button>
+      ) : (
+        <div className="flex items-start gap-2.5">{heading}</div>
+      )}
+      {expanded ? <div className="mt-3 space-y-3">{children}</div> : null}
     </section>
   );
 }
@@ -148,19 +178,13 @@ function SemanticSourceSettings({
   };
 
   return (
-    <section className="space-y-4 rounded-2xl border border-border/75 bg-secondary/20 p-4">
-      <div className="flex items-start gap-2.5">
-        <div className="mt-0.5 rounded-lg bg-primary/10 p-1.5 text-primary">
-          <Database className="size-3.5" />
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-foreground">Modo de operação</p>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
-            Escolha como cada pergunta será processada nesta conversa.
-          </p>
-        </div>
-      </div>
-
+    <SettingsGroup
+      collapsible
+      defaultOpen={false}
+      description="Escolha como cada pergunta será processada nesta conversa."
+      icon={Database}
+      title="Modo de operação"
+    >
       <div className="grid grid-cols-1 gap-2">
         {(
           [
@@ -194,9 +218,7 @@ function SemanticSourceSettings({
                 {description}
               </span>
               <span className="mt-2 block text-[9px] font-medium uppercase tracking-wide text-muted-foreground/75">
-                {mode === "standard"
-                  ? "Pergunta → LLM"
-                  : "Pergunta → Luna → rota"}
+                {mode === "standard" ? "Pergunta → LLM" : "Pergunta → Luna → rota"}
               </span>
             </button>
           );
@@ -272,9 +294,7 @@ function SemanticSourceSettings({
         <div className="space-y-2 border-t border-border/60 pt-3">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
             <div>
-              <p className="text-[11px] font-medium text-foreground">
-                Limite de citações do Agent
-              </p>
+              <p className="text-[11px] font-medium text-foreground">Limite de citações do Agent</p>
               <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
                 Máximo de trechos recuperados e exibidos quando Luna consultar o corpus (1–200).
               </p>
@@ -303,8 +323,9 @@ function SemanticSourceSettings({
                 aria-expanded={agentSourcesOpen}
               >
                 <ChevronRight
-                  className={`mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform ${agentSourcesOpen ? "rotate-90" : ""
-                    }`}
+                  className={`mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform ${
+                    agentSourcesOpen ? "rotate-90" : ""
+                  }`}
                   aria-hidden="true"
                 />
                 <span>
@@ -383,16 +404,16 @@ function SemanticSourceSettings({
           )}
 
           {(operationMode !== "agent" || agentSourcesOpen) &&
-            !loading &&
-            !error &&
-            selectedIds.length === 0 ? (
+          !loading &&
+          !error &&
+          selectedIds.length === 0 ? (
             <p className="text-[10px] leading-relaxed text-destructive">
               Selecione ao menos uma fonte para usar a recuperação documental.
             </p>
           ) : null}
         </div>
       ) : null}
-    </section>
+    </SettingsGroup>
   );
 }
 
@@ -402,6 +423,8 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
       {isAdmin ? (
         <>
           <SettingsGroup
+            collapsible
+            defaultOpen={false}
             icon={Bot}
             title="Modelo e recuperação RAG"
             description="Defina a capacidade do modelo e a quantidade de trechos do File Search."
@@ -410,13 +433,20 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
               <Label>Modelo</Label>
               <Select
                 value={draft.model}
-                onValueChange={(value) => setDraft({ ...draft, model: value as ModelId })}
+                onValueChange={(value) => {
+                  const model = value as ModelId;
+                  setDraft({
+                    ...draft,
+                    model,
+                    reasoningEffort: normalizeReasoningEffortForModel(model, draft.reasoningEffort),
+                  });
+                }}
               >
                 <SelectTrigger className="bg-card/90 text-xs shadow-[0_2px_8px_-5px_rgba(25,70,50,0.32)]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="text-xs">
-                  {MODELS.map((model) => (
+                  {modelsFor(isAdmin).map((model) => (
                     <SelectItem className="text-xs" key={model.id} value={model.id}>
                       {model.label} — {model.id}
                     </SelectItem>
@@ -440,9 +470,11 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="text-xs">
-                  <SelectItem className="text-xs" value="none">
-                    Nenhum — menor latência
-                  </SelectItem>
+                  {modelSupportsNoneReasoning(draft.model) ? (
+                    <SelectItem className="text-xs" value="none">
+                      Nenhum — menor latência
+                    </SelectItem>
+                  ) : null}
                   <SelectItem className="text-xs" value="low">
                     Otimizado — respostas mais rápidas
                   </SelectItem>
@@ -495,6 +527,8 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
       ) : null}
 
       <SettingsGroup
+        collapsible={isAdmin}
+        defaultOpen
         icon={UserRound}
         title="Perfil da IA"
         description="Escolha a voz, a postura e o estilo predominantes da resposta."
@@ -531,6 +565,8 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
 
       {isAdmin ? (
         <SettingsGroup
+          collapsible
+          defaultOpen={false}
           icon={Gauge}
           title="Aprofundamento"
           description="Controle a extensão e o nível de detalhe esperado em cada resposta."
@@ -604,6 +640,8 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
       ) : null}
 
       <SettingsGroup
+        collapsible={isAdmin}
+        defaultOpen
         icon={Brain}
         title="Formato da resposta"
         description="Defina a organização e as convenções de apresentação do texto."
@@ -640,6 +678,8 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
 
       {isAdmin ? (
         <SettingsGroup
+          collapsible
+          defaultOpen={false}
           icon={SlidersHorizontal}
           title="Instruções adicionais"
           description="Orientações suplementares para esta conversa, sem substituir as regras do sistema."

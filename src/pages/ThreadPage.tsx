@@ -397,6 +397,7 @@ export function ThreadPage() {
           onCycleContainerWidth={cycleContainerWidth}
           onToggleTheme={toggleTheme}
           product="BOT"
+          showModeSwitcher={isAdmin}
           subtitle="Assistente de IA da Conscienciologia"
         />
 

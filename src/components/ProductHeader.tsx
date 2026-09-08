@@ -14,6 +14,7 @@ type ProductHeaderProps = {
   onToggleTheme: () => void;
   mobileNavigation?: ReactNode;
   brandHref?: string;
+  showModeSwitcher?: boolean;
 };
 
 export function ProductHeader({
@@ -26,6 +27,7 @@ export function ProductHeader({
   onToggleTheme,
   mobileNavigation,
   brandHref,
+  showModeSwitcher = true,
 }: ProductHeaderProps) {
   const brand = (
     <>
@@ -74,7 +76,7 @@ export function ProductHeader({
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <AppModeSwitcher compact />
+          {showModeSwitcher ? <AppModeSwitcher compact /> : null}
           <button
             aria-label={`Largura da tela: ${containerWidthLabel}`}
             className="hidden size-8 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"

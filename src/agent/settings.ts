@@ -16,12 +16,15 @@ export type AgentSettings = {
   prompt: string;
   /** Define se Luna pode recuperar corpus ou apenas oferecer direcionamentos. */
   presentation: AgentPresentation;
+  /** Gera uma pergunta curta de continuidade após cada resposta do Agent. */
+  followUpSuggestions: boolean;
 };
 
 export const AGENT_SETTINGS_DEFAULT: AgentSettings = {
   enabled: AGENT_MODE,
   prompt: "",
   presentation: "classic",
+  followUpSuggestions: true,
 };
 
 /** Compatibilidade com preferências salvas antes da apresentação ser configurável. */
@@ -32,5 +35,9 @@ export function normalizeAgentSettings(
     enabled: typeof value?.enabled === "boolean" ? value.enabled : AGENT_SETTINGS_DEFAULT.enabled,
     prompt: typeof value?.prompt === "string" ? value.prompt : "",
     presentation: value?.presentation === "classic" ? "classic" : "citations",
+    followUpSuggestions:
+      typeof value?.followUpSuggestions === "boolean"
+        ? value.followUpSuggestions
+        : AGENT_SETTINGS_DEFAULT.followUpSuggestions,
   };
 }

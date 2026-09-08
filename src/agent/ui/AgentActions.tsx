@@ -1,11 +1,8 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Sparkles } from "lucide-react";
 
 import type { AgentHost } from "@/agent/host";
 import type { AgentSettings } from "@/agent/settings";
-import type {
-  AgentAction,
-  AgentMessage,
-} from "@/agent/types";
+import type { AgentAction, AgentMessage } from "@/agent/types";
 type Props = {
   threadId: string;
   settings: AgentSettings;
@@ -15,6 +12,9 @@ type Props = {
   /** Turno específico, usado pela apresentação Clássico sob a resposta correspondente. */
   userMessage?: AgentMessage | null;
   expandedByDefault?: boolean;
+  followUpQuestion?: string;
+  onFollowUp?: (question: string) => void;
+  disabled?: boolean;
 };
 
 function latestUser(messages: AgentMessage[]) {
@@ -54,13 +54,16 @@ export function AgentActions({
   messages,
   userMessage,
   expandedByDefault = false,
+  followUpQuestion,
+  onFollowUp,
+  disabled = false,
 }: Props) {
   const user = userMessage ?? latestUser(messages ?? []);
   // A decisão pertence ao turno gravado. Alterar o interruptor depois não deve
   // apagar pills nem o card de fontes de uma resposta já existente.
   const actions = actionsOf(user);
   const externalActions = actions.filter((action) => action.kind === "open-url");
-  if (externalActions.length === 0) return null;
+  if (externalActions.length === 0 && !followUpQuestion) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {externalActions.map((action) => (
@@ -84,6 +87,18 @@ export function AgentActions({
           <span>{action.label}</span>
         </a>
       ))}
+      {followUpQuestion ? (
+        <button
+          type="button"
+          disabled={disabled}
+          title={`Perguntar: ${followUpQuestion}`}
+          onClick={() => onFollowUp?.(followUpQuestion)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-primary/35 bg-primary/8 px-3 py-1.5 text-xs font-chat text-foreground transition-colors hover:border-primary/55 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Sparkles className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+          <span>{followUpQuestion}</span>
+        </button>
+      ) : null}
     </div>
   );
 }

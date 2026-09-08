@@ -9,11 +9,16 @@ const source = rawSource.replace(
     enabled: false,
     prompt: "",
     presentation: "classic",
+    followUpSuggestions: true,
   };
   const normalizeAgentSettings = (value) => ({
     enabled: typeof value?.enabled === "boolean" ? value.enabled : AGENT_SETTINGS_DEFAULT.enabled,
     prompt: typeof value?.prompt === "string" ? value.prompt : "",
     presentation: value?.presentation === "classic" ? "classic" : "citations",
+    followUpSuggestions:
+      typeof value?.followUpSuggestions === "boolean"
+        ? value.followUpSuggestions
+        : AGENT_SETTINGS_DEFAULT.followUpSuggestions,
   });`,
 );
 
