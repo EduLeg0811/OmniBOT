@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: consbot
+    name: omnibot
     runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
