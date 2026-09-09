@@ -72,13 +72,13 @@ export const RESPONSE_FORMATS: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
-  {
-    id: "conscienciological",
-    label: "Confor CONS",
-    description: "Estilo da Conscienciologia",
-  },
-];
+    { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
+    {
+      id: "conscienciological",
+      label: "Confor CONS",
+      description: "Estilo da Conscienciologia",
+    },
+  ];
 
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -163,11 +163,11 @@ export const PROFILES: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
-  { id: "tutor", label: "Tutor", description: "Didático e cordial" },
-  { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
-  { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
-];
+    { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
+    { id: "tutor", label: "Tutor", description: "Didático e cordial" },
+    { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
+    { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
+  ];
 
 export const PROFILE_INSTRUCTIONS: Record<ProfileId, string> = {
   preceptor: `## Perfil: Preceptor
@@ -301,7 +301,7 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
   tutor: {
     model: "gpt-5.6-terra",
     reasoningEffort: "low",
-    responseFormat: "conscienciological",
+    responseFormat: "chatgpt",
     responseDepth: "synthetic",
     vectorStoreId: "vs_6a7f75cd0be48191b3f3960a518c6ff3",
     vectorMaxResults: 10,
@@ -309,7 +309,7 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
   escritor: {
     model: "gpt-5.6-terra",
     reasoningEffort: "medium",
-    responseFormat: "conscienciological",
+    responseFormat: "chatgpt",
     responseDepth: "complete",
     vectorStoreId: "vs_6a7f75cd0be48191b3f3960a518c6ff3",
     vectorMaxResults: 15,
