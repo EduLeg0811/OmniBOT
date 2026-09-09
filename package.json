@@ -2,6 +2,9 @@
   "name": "consbot",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "dev:all": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./dev.ps1",
