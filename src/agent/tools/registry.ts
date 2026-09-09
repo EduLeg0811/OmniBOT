@@ -14,6 +14,8 @@ import {
   ccciDestination,
   fold,
   isBlockedCcciUrl,
+  isIcgeVerbetotecaUrl,
+  isSearchVerbeteUrl,
 } from "@/agent/config";
 import type {
   AgentAction,
@@ -374,7 +376,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   }),
 ];
 
-export const MAX_AGENT_ACTIONS = 2;
+export const MAX_AGENT_ACTIONS = 3;
 
 /** Identidade de um pill para efeito de repetição: a ferramenta mais o termo,
  * dobrado para ignorar acento, caixa e ligadura. */
@@ -398,29 +400,60 @@ export function agentTool(name: string) {
 }
 export function actionsFromMatches(matches: AgentMatch[], ctx: AgentContext): AgentAction[] {
   const seen = new Set<AgentIntentId>();
-  return (
-    [...matches]
-      // Ordenar antes de cortar. Antes o corte vinha primeiro, em duas etapas,
-      // e uma ação de confiança alta podia ser descartada para dar lugar a
-      // outra, mais fraca, só por ter vindo antes na lista do modelo.
-      .sort((left, right) => right.confidence - left.confidence)
-      .filter((match) => match.confidence >= AGENT_CONFIDENCE_MEDIUM)
-      .filter((match) => {
-        const item = agentTool(match.intent);
-        if (!item || seen.has(match.intent) || (item.termRequired && !match.term)) return false;
-        if (
-          match.intent === "open_resource" &&
-          !AGENT_RESOURCE_IDS.includes((match.resource ?? "") as never)
-        )
-          return false;
-        seen.add(match.intent);
-        return true;
-      })
-      .slice(0, MAX_AGENT_ACTIONS)
-      .map((match, position) => ({ ...agentTool(match.intent)!.toAction(match, ctx), position }))
-      // Defesa em profundidade: os destinos vetados não constam do catálogo,
-      // mas uma variável de ambiente ou um id reintroduzido por engano não
-      // devem conseguir virar pill.
-      .filter((item) => !isBlockedCcciUrl(item.href))
+  const validCandidates = [...matches]
+    // Ordenar antes de cortar. Antes o corte vinha primeiro, em duas etapas,
+    // e uma ação de confiança alta podia ser descartada para dar lugar a
+    // outra, mais fraca, só por ter vindo antes na lista do modelo.
+    .sort((left, right) => right.confidence - left.confidence)
+    .filter((match) => match.confidence >= AGENT_CONFIDENCE_MEDIUM)
+    .filter((match) => {
+      const item = agentTool(match.intent);
+      if (!item || seen.has(match.intent) || (item.termRequired && !match.term)) return false;
+      if (
+        match.intent === "open_resource" &&
+        !AGENT_RESOURCE_IDS.includes((match.resource ?? "") as never)
+      )
+        return false;
+      seen.add(match.intent);
+      return true;
+    });
+
+  // Regra pontual: nunca sugerir pills da Verbetoteca do ICGE (?page_id=13493) e da busca de verbetes
+  // do Cons-IA (index_search_verb.html) ao mesmo tempo. Preferir sempre a busca de verbetes.
+  const hasSearchVerbete = validCandidates.some((match) => match.intent === "search_verbete");
+  const filteredCandidates = hasSearchVerbete
+    ? validCandidates.filter(
+        (match) =>
+          !(
+            match.intent === "catalogo_ccci" &&
+            (match.area === "verbetoteca" ||
+              isIcgeVerbetotecaUrl(ccciDestination(match.area)?.url ?? ""))
+          ),
+      )
+    : validCandidates;
+
+  const rawActions = filteredCandidates
+    .slice(0, MAX_AGENT_ACTIONS)
+    .map((match, position) => ({ ...agentTool(match.intent)!.toAction(match, ctx), position }))
+    // Defesa em profundidade: os destinos vetados não constam do catálogo,
+    // mas uma variável de ambiente ou um id reintroduzido por engano não
+    // devem conseguir virar pill.
+    .filter((item) => !isBlockedCcciUrl(item.href));
+
+  // Defesa em profundidade secundária: se houver pill de busca de verbetes,
+  // nunca manter pill da Verbetoteca do ICGE (?page_id=13493).
+  const hasVerbetePill = rawActions.some(
+    (item) => item.id === "search_verbete" || isSearchVerbeteUrl(item.href),
+  );
+  const actions = hasVerbetePill
+    ? rawActions.filter(
+        (item) =>
+          !isIcgeVerbetotecaUrl(item.href) &&
+          !(item.id === "catalogo_ccci" && item.meta?.area === "verbetoteca"),
+      )
+    : rawActions;
+
+  return actions.map((action, position) =>
+    action.position === position ? action : { ...action, position },
   );
 }

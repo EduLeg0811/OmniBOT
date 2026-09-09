@@ -170,7 +170,7 @@ export const CCCI_DESTINATIONS = [
     id: "verbetoteca",
     label: "Verbetoteca",
     url: ICGE(13493),
-    hint: "Navegação institucional da Verbetoteca. Para consultar o conteúdo de um verbete use search_verbete.",
+    hint: "Navegação institucional da Verbetoteca. Para consultar o conteúdo de um verbete use search_verbete. Nunca sugerir junto com search_verbete (preferir search_verbete).",
   },
   // ── Referência conceitual ───────────────────────────────────────────────
   {
@@ -264,6 +264,30 @@ export function isBlockedCcciUrl(url: string): boolean {
     if (!/(^|\.)icge\.org\.br$/i.test(parsed.hostname)) return false;
     const pageId = parsed.searchParams.get("page_id");
     return pageId !== null && BLOCKED_ICGE_PAGE_IDS.includes(pageId);
+  } catch {
+    return false;
+  }
+}
+
+export function isIcgeVerbetotecaUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      /(^|\.)icge\.org\.br$/i.test(parsed.hostname) &&
+      parsed.searchParams.get("page_id") === "13493"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isSearchVerbeteUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      /(^|\.)cons-ia\.org$/i.test(parsed.hostname) &&
+      parsed.pathname.includes("index_search_verb.html")
+    );
   } catch {
     return false;
   }

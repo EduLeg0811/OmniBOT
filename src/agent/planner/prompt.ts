@@ -35,14 +35,18 @@ const SHAPES_EN = [
  * modelo escolhe por sorteio, e a sobreposição vira pill deslocado. */
 const PRECEDENCE_PT = [
   "PRECEDÊNCIAS — quando mais de uma ferramenta cabe:",
+  "Buscas por termo/conceito: a não ser que o usuário aponte objetivamente apenas o verbete ou apenas o livro, normalmente ao indicar pill de busca sugira em conjunto a busca de verbete (search_verbete) e a busca em livros (search_book) com o mesmo termo. Se o usuário apontar objetivamente apenas um deles (ex.: citar obra/livro específico ou pedir expressamente 'nos livros' ou 'nos verbetes'), sugira somente a ferramenta solicitada.",
   "Consultar o conteúdo de um verbete é sempre search_verbete. As listagens de verbetes defendidos ou em andamento servem a quem escreve verbete, nunca a quem quer ler um.",
+  "Nunca sugira pills de https://www.icge.org.br/?page_id=13493 (Verbetoteca do ICGE) e https://cons-ia.org/index_search_verb.html (search_verbete) ao mesmo tempo: eles são duas formas similares de buscar verbetes. Prefira sempre https://cons-ia.org/index_search_verb.html.",
   "Livros: baixar ou ler é o recurso livros_pdf; comprar é livros_comprar; saber que obras existem é livros_catalogo; quem escreveu o quê é autores_livros. Buscar o conteúdo dentro dos livros é search_book.",
   "Artigos e periódicos para leitura são o recurso periodicos. Os destinos revistas e publicacoes_ccci são panorama institucional.",
   "ConsGPT e ConsLM só aparecem quando explicitamente pedidos. LexiCons sempre abre no modo padrão Cosmovisão.",
 ];
 const PRECEDENCE_EN = [
   "PRECEDENCE — when more than one tool fits:",
+  "Term/concept searches: unless the user objectively specifies only the entry or only the book, normally when suggesting a search pill suggest both entry search (search_verbete) and book search (search_book) together for the same term. If the user objectively specifies only one (e.g., names a specific book/work or explicitly asks 'in the books' or 'in the entries'), suggest only the requested tool.",
   "Reading the content of an entry is always search_verbete. The defended and in-progress entry listings serve entry writers, never someone who wants to read one.",
+  "Never suggest pills for https://www.icge.org.br/?page_id=13493 (ICGE Verbetoteca) and https://cons-ia.org/index_search_verb.html (search_verbete) at the same time: they are two similar ways of searching entries. Always prefer https://cons-ia.org/index_search_verb.html.",
   "Books: downloading or reading is the livros_pdf resource; buying is livros_comprar; knowing which works exist is livros_catalogo; who wrote what is autores_livros. Searching inside the books is search_book.",
   "Articles and periodicals for reading are the periodicos resource. The revistas and publicacoes_ccci destinations are institutional overviews.",
   "ConsGPT and ConsLM appear only when explicitly requested. LexiCons always opens in default Cosmovision mode.",
@@ -54,7 +58,7 @@ const PT = [
   "responseMode: full para toda dúvida conceitual, factual, explicativa, comparativa, síntese ou redação; direct somente para saudação, despedida, agradecimento, funcionamento do ConsBOT ou list_sources; corpus apenas para trechos brutos explicitamente pedidos sem interpretação.",
   "Ações NÃO substituem a resposta. Elas acompanham. Nunca escolha um modo por causa de uma ação, e nunca deixe de responder porque há um link.",
   "A LISTA VAZIA DE AÇÕES É O RESULTADO ESPERADO NA MAIORIA DOS TURNOS. Só proponha ação quando um destino específico acrescente algo que a resposta sozinha não dá. Na dúvida, não proponha.",
-  "Ações são independentes e têm confidence própria. Retorne no máximo 2.",
+  "Ações são independentes e têm confidence própria. Retorne no máximo 3.",
   "Em cada ação, term deve conter somente o conceito central da pesquisa. Nunca concatene palavras-chave extraídas da resposta nem de um texto colado.",
   "Em direct e corpus, answer deve ser curto, contextual e coerente com o que realmente foi executado. Em full, deixe answer vazio.",
   "Nunca prometa execução futura (“vou buscar”, “irei localizar”, “aguarde”), pois os links apenas transferem o usuário a outro serviço. Nunca diga que encontrou, não encontrou, que algo não existe, nem informe contagem ou resultados se o destino ainda não foi consultado.",
@@ -70,7 +74,7 @@ const EN = [
   "responseMode: full for every conceptual, factual, explanatory, comparative, synthesis or writing request; direct only for greeting, farewell, thanks, ConsBOT operation or list_sources; corpus only for explicitly requested raw excerpts without interpretation.",
   "Actions do NOT replace the answer. They accompany it. Never pick a mode because of an action, and never withhold an answer because there is a link.",
   "AN EMPTY ACTION LIST IS THE EXPECTED RESULT IN MOST TURNS. Propose an action only when a specific destination adds something the answer alone does not. When in doubt, propose none.",
-  "Actions are independent and have their own confidence. Return at most 2.",
+  "Actions are independent and have their own confidence. Return at most 3.",
   "For each action, term contains only the central search concept. Never concatenate keywords extracted from the answer or from a pasted text.",
   "For direct and corpus, answer is short, contextual and consistent with what was actually executed. For full, leave answer empty.",
   "Never promise future execution (“I will search”, “please wait”), because links only transfer the user to another service. Never claim found/not found/nonexistent items, counts or results when the destination has not been queried.",

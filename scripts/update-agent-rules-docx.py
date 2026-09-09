@@ -144,7 +144,7 @@ table(["Ação", "Introdução neutra"], [
     ("ICGE", "A área pertinente do ICGE pode ser aberta abaixo."),
 ], [4.2, 12.2])
 doc.add_heading("Apresentação", level=2)
-bullet("No máximo dois pills por turno, na mesma linha quando houver espaço.")
+bullet("No máximo três pills por turno, na mesma linha quando houver espaço.")
 bullet("Fundo branco, rótulo curto, foco visível e descrição completa no atributo title.")
 bullet("Pill de continuidade segue o mesmo padrão visual e permanece controlável no menu ADMIN.")
 

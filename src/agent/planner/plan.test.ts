@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CCCI_DESTINATIONS, isBlockedCcciUrl } from "@/agent/config";
+import {
+  CCCI_DESTINATIONS,
+  isBlockedCcciUrl,
+  isIcgeVerbetotecaUrl,
+  isSearchVerbeteUrl,
+} from "@/agent/config";
 import {
   buildAgentResponseContext,
   normalizePlannerPayload,
@@ -72,16 +77,21 @@ describe("normalização do planejador Agent v3", () => {
     expect(plan.actions.map((item) => item.id)).toEqual(["search_book"]);
   });
 
-  it("ordena por confiança antes de cortar em duas ações", () => {
+  it("ordena por confiança antes de cortar em três ações", () => {
     const plan = normalizePlannerPayload(
       payload("full", 0.9, [
         action("search_book", "tenepes", 0.6),
         action("bibliomancia", "", 0.7),
         action("search_verbete", "tenepes", 0.95),
+        action("search_conscienciograma", "tenepes", 0.8),
       ]),
       context(),
     );
-    expect(plan.actions.map((item) => item.id)).toEqual(["search_verbete", "bibliomancia"]);
+    expect(plan.actions.map((item) => item.id)).toEqual([
+      "search_verbete",
+      "search_conscienciograma",
+      "bibliomancia",
+    ]);
   });
 
   it("direct sem resposta volta ao caminho completo", () => {
@@ -231,3 +241,68 @@ describe("repetição de pills na conversa", () => {
     expect(withoutRepeatedActions([pill("proéxis")], [pill("tenepes")])).toHaveLength(1);
   });
 });
+
+describe("regra pontual: Verbetoteca do ICGE (?page_id=13493) vs busca de verbetes", () => {
+  it("reconhece URLs da Verbetoteca do ICGE e de busca de verbetes", () => {
+    expect(isIcgeVerbetotecaUrl("https://www.icge.org.br/?page_id=13493")).toBe(true);
+    expect(isIcgeVerbetotecaUrl("http://icge.org.br/?page_id=13493&foo=bar")).toBe(true);
+    expect(isIcgeVerbetotecaUrl("https://www.icge.org.br/?page_id=9973")).toBe(false);
+
+    expect(isSearchVerbeteUrl("https://cons-ia.org/index_search_verb.html")).toBe(true);
+    expect(isSearchVerbeteUrl("https://cons-ia.org/index_search_verb.html?q=tenepes&field=texto")).toBe(true);
+    expect(isSearchVerbeteUrl("https://cons-ia.org/index_search_book.html")).toBe(false);
+  });
+
+  it("nunca sugere Verbetoteca do ICGE e search_verbete ao mesmo tempo, preferindo search_verbete", () => {
+    const matches: AgentMatch[] = [
+      { intent: "catalogo_ccci", term: "", confidence: 0.98, area: "verbetoteca" },
+      { intent: "search_verbete", term: "autopesquisa", confidence: 0.90, field: "texto" },
+    ];
+    const actions = actionsFromMatches(matches, context());
+    expect(actions).toHaveLength(1);
+    expect(actions[0]!.id).toBe("search_verbete");
+    expect(actions[0]!.href).toContain("index_search_verb.html");
+    expect(actions[0]!.href).not.toContain("13493");
+    expect(actions.some((a) => isIcgeVerbetotecaUrl(a.href))).toBe(false);
+  });
+
+  it("preserva outra ação válida no lugar da Verbetoteca descartada", () => {
+    const matches: AgentMatch[] = [
+      { intent: "catalogo_ccci", term: "", confidence: 0.98, area: "verbetoteca" },
+      { intent: "search_verbete", term: "tenepes", confidence: 0.95 },
+      { intent: "search_book", term: "tenepes", confidence: 0.90 },
+    ];
+    const actions = actionsFromMatches(matches, context());
+    expect(actions).toHaveLength(2);
+    expect(actions.map((a) => a.id)).toEqual(["search_verbete", "search_book"]);
+    expect(actions.some((a) => isIcgeVerbetotecaUrl(a.href))).toBe(false);
+  });
+
+  it("permite Verbetoteca do ICGE quando search_verbete não está presente", () => {
+    const matches: AgentMatch[] = [
+      { intent: "catalogo_ccci", term: "", confidence: 0.95, area: "verbetoteca" },
+    ];
+    const actions = actionsFromMatches(matches, context());
+    expect(actions).toHaveLength(1);
+    expect(actions[0]!.id).toBe("catalogo_ccci");
+    expect(actions[0]!.href).toBe("https://www.icge.org.br/?page_id=13493");
+  });
+
+  it("permite até MAX_AGENT_ACTIONS = 3 ações simultâneas", () => {
+    const matches: AgentMatch[] = [
+      { intent: "search_verbete", term: "tenepes", confidence: 0.95 },
+      { intent: "search_book", term: "tenepes", confidence: 0.90 },
+      { intent: "consulta_lexicons", term: "tenepes", confidence: 0.85 },
+      { intent: "search_conscienciograma", term: "tenepes", confidence: 0.80 },
+    ];
+    const actions = actionsFromMatches(matches, context());
+    expect(actions).toHaveLength(3);
+    expect(actions.map((a) => a.id)).toEqual([
+      "search_verbete",
+      "search_book",
+      "consulta_lexicons",
+    ]);
+  });
+});
+
+

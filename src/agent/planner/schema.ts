@@ -33,7 +33,7 @@ function buildSchema() {
       responseConfidence: { type: "number", minimum: 0, maximum: 1 },
       actions: {
         type: "array",
-        maxItems: 2,
+        maxItems: 3,
         description:
           "Ações independentes da resposta. Lista vazia é o resultado esperado na maioria dos turnos.",
         items: {
