@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { CCCI_DESTINATIONS, isBlockedCcciUrl } from "@/agent/config";
 import {
   buildAgentResponseContext,
   normalizePlannerPayload,
   type PlannerPayload,
 } from "@/agent/planner/plan";
-import { actionsFromMatches } from "@/agent/tools/registry";
+import { actionsFromMatches, withoutRepeatedActions } from "@/agent/tools/registry";
 import type { AgentContext, AgentMatch } from "@/agent/types";
 
 function context(presentation: "classic" | "citations" = "classic"): AgentContext {
@@ -22,7 +23,7 @@ function context(presentation: "classic" | "citations" = "classic"): AgentContex
     threadId: "thread",
   };
 }
-const defaults = { field: "texto", book: "", area: "", resource: "", style: "" };
+const defaults = { field: "texto", book: "", area: "raiz", section: "", resource: "", style: "" };
 const action = (intent: string, term = "", confidence = 0.9, extra = {}) => ({
   intent,
   term,
@@ -43,57 +44,52 @@ const payload = (
   reason: "test",
 });
 
-describe("normalização do planejador Agent v2", () => {
-  it.each(["full", "action_only", "direct", "clarify", "corpus"])("normaliza %s", (mode) => {
-    const actions = mode === "action_only" ? [action("bibliomancia")] : [];
-    const answer = ["action_only", "direct", "clarify", "corpus"].includes(mode)
-      ? "Resposta curta."
-      : "";
-    const plan = normalizePlannerPayload(
-      payload(mode, 0.95, actions, answer),
-      context("citations"),
-    );
+describe("normalização do planejador Agent v3", () => {
+  it.each(["full", "direct", "corpus"])("normaliza %s", (mode) => {
+    const answer = mode === "full" ? "" : "Resposta curta.";
+    const plan = normalizePlannerPayload(payload(mode, 0.95, [], answer), context("citations"));
     expect(plan.responseMode).toBe(mode);
   });
-  it("não suprime pergunta substantiva que também tem ação", () => {
+
+  it("um pill nunca substitui a resposta", () => {
     const plan = normalizePlannerPayload(
-      payload("full", 0.98, [action("icge", "", 0.92, { area: "memoria" })]),
+      payload("full", 0.98, [action("catalogo_ccci", "", 0.92, { area: "memoria" })]),
       context(),
     );
     expect(plan).toMatchObject({ responseMode: "full", route: "full", answer: "" });
-    expect(plan.actions[0]).toMatchObject({ id: "icge", destination: "Memória CCCI" });
+    expect(plan.actions[0]).toMatchObject({ id: "catalogo_ccci", label: "Memória CCCI" });
   });
-  it("rebaixa action_only de confiança média, preservando o pill", () => {
+
+  it("confiança baixa do modo não suprime mais a resposta, e a ação fraca continua filtrada", () => {
     const plan = normalizePlannerPayload(
-      payload("action_only", 0.7, [action("search_book", "tenepes")], "Preparada."),
-      context(),
-    );
-    expect(plan).toMatchObject({
-      responseMode: "full",
-      reason: "action_only_requires_high_confidence",
-    });
-    expect(plan.actions).toHaveLength(1);
-  });
-  it("força full abaixo de 0,55 e preserva somente ação confiável", () => {
-    const plan = normalizePlannerPayload(
-      payload("direct", 0.4, [
+      payload("full", 0.4, [
         action("search_book", "tenepes", 0.8),
         action("search_verbete", "tenepes", 0.4),
       ]),
       context(),
     );
-    expect(plan).toMatchObject({ responseMode: "full", reason: "low_confidence" });
+    expect(plan.responseMode).toBe("full");
     expect(plan.actions.map((item) => item.id)).toEqual(["search_book"]);
   });
-  it("exige alta confiança para clarify", () => {
-    expect(
-      normalizePlannerPayload(payload("clarify", 0.7, [], "Qual obra?"), context()).responseMode,
-    ).toBe("full");
-    expect(
-      normalizePlannerPayload(payload("clarify", 0.9, [], "Qual obra?"), context()).responseMode,
-    ).toBe("clarify");
+
+  it("ordena por confiança antes de cortar em duas ações", () => {
+    const plan = normalizePlannerPayload(
+      payload("full", 0.9, [
+        action("search_book", "tenepes", 0.6),
+        action("bibliomancia", "", 0.7),
+        action("search_verbete", "tenepes", 0.95),
+      ]),
+      context(),
+    );
+    expect(plan.actions.map((item) => item.id)).toEqual(["search_verbete", "bibliomancia"]);
   });
-  it("no Clássico corpus sempre vira full, sem virar direct", () => {
+
+  it("direct sem resposta volta ao caminho completo", () => {
+    const plan = normalizePlannerPayload(payload("direct", 0.9, [], ""), context());
+    expect(plan).toMatchObject({ responseMode: "full", reason: "missing_direct_answer" });
+  });
+
+  it("no Clássico corpus sempre vira full, preservando a ação", () => {
     const plan = normalizePlannerPayload(
       payload("corpus", 0.99, [action("search_book", "tenepes")], "Trechos."),
       context("classic"),
@@ -105,30 +101,19 @@ describe("normalização do planejador Agent v2", () => {
     });
     expect(plan.actions).toHaveLength(1);
   });
-  it("action_only sem ação válida vira full", () => {
-    expect(
-      normalizePlannerPayload(
-        payload("action_only", 0.99, [action("search_book", "", 0.9)], "Abra."),
-        context(),
-      ).responseMode,
-    ).toBe("full");
-  });
-  it("substitui introdução com alegação de resultado por texto neutro do catálogo", () => {
+
+  it("corta o termo longo em vez de anular a ação", () => {
     const plan = normalizePlannerPayload(
-      payload("action_only", 0.99, [action("search_book", "tenepes")], "Encontrei 12 resultados."),
+      payload("full", 0.99, [
+        action("search_book", "Programa de Aceleração da Desperticidade do Conselho de epicons"),
+      ]),
       context(),
     );
-    expect(plan.answer).toContain("está preparada");
-    expect(plan.answer).not.toMatch(/encontrei|12/i);
+    expect(plan.actions).toHaveLength(1);
+    expect((plan.actions[0]!.meta?.term ?? "").split(/\s+/)).toHaveLength(6);
+    expect(plan.reason).toContain("termo_cortado");
   });
-  it("substitui introdução longa por texto neutro do catálogo", () => {
-    const plan = normalizePlannerPayload(
-      payload("action_only", 0.99, [action("bibliomancia")], "x".repeat(400)),
-      context(),
-    );
-    expect(plan.answer).toContain("sorteio");
-    expect(plan.answer.length).toBeLessThan(200);
-  });
+
   it("gera contexto confiável para a resposta principal", () => {
     const plan = normalizePlannerPayload(
       payload("full", 0.99, [action("search_verbete", "tenepes", 0.9, { field: "titulo" })]),
@@ -137,6 +122,35 @@ describe("normalização do planejador Agent v2", () => {
     const prompt = buildAgentResponseContext(plan, false);
     expect(prompt).toContain("ainda não consultado");
     expect(prompt).toContain("não afirme inexistência");
+  });
+});
+
+describe("catálogo de destinos da CCCI", () => {
+  it("todo destino gera pill com URL válida e rótulo do próprio destino", () => {
+    for (const destination of CCCI_DESTINATIONS) {
+      const [result] = actionsFromMatches(
+        [{ intent: "catalogo_ccci", term: "", confidence: 1, area: destination.id }],
+        context(),
+      );
+      expect(result, destination.id).toBeDefined();
+      expect(() => new URL(result!.href)).not.toThrow();
+      expect(result!.href).toBe(destination.url);
+      expect(result!.label).toBe(destination.label);
+    }
+  });
+
+  it("nenhum destino do catálogo cai na blacklist", () => {
+    for (const destination of CCCI_DESTINATIONS) {
+      expect(isBlockedCcciUrl(destination.url), destination.id).toBe(false);
+    }
+  });
+
+  it("as páginas vetadas são reconhecidas e as demais não", () => {
+    for (const pageId of [4006, 6051, 1385]) {
+      expect(isBlockedCcciUrl(`https://www.icge.org.br/?page_id=${pageId}`)).toBe(true);
+    }
+    expect(isBlockedCcciUrl("https://www.icge.org.br/?page_id=6611")).toBe(false);
+    expect(isBlockedCcciUrl("https://editares.org/")).toBe(false);
   });
 });
 
@@ -152,25 +166,7 @@ describe("URLs e parâmetros", () => {
     expect(result[1]!.href).toContain("autostart=1");
     expect(result[1]!.href).not.toContain("mode=");
   });
-  it("mapeia as oito macroáreas oficiais do ICGE", () => {
-    const areas = [
-      "agenda",
-      "instituicoes",
-      "publicacoes",
-      "enciclopedia",
-      "memoria",
-      "videos",
-      "autopesquisa",
-      "holociclo",
-    ];
-    for (const area of areas) {
-      const [result] = actionsFromMatches(
-        [{ intent: "icge", term: "", confidence: 1, area }],
-        context(),
-      );
-      expect(result!.href).toMatch(/^https:\/\/www\.icge\.org\.br\/\?page_id=\d+$/);
-    }
-  });
+
   it("constrói verbetes, CCG, bibliografias, Bibliomancia e recurso explícito", () => {
     const cases: AgentMatch[] = [
       { intent: "search_verbete", term: "Vieira", confidence: 1, field: "autor" },
@@ -192,5 +188,46 @@ describe("URLs e parâmetros", () => {
     expect(hrefs[2]).toContain("style=bee");
     expect(hrefs[3]).toContain("autostart=1");
     expect(hrefs[4]).toContain("periodicos.conscienciologia.org.br");
+  });
+
+  it("resolve a obra escrita por extenso em term, e não abre bibliografia vazia", () => {
+    const [result] = actionsFromMatches(
+      [
+        {
+          intent: "bibliografia_livros",
+          term: "Léxico de Ortopensatas 2019",
+          confidence: 1,
+          style: "bee",
+        },
+      ],
+      context(),
+    );
+    expect(result!.href).toContain("sigla=LO");
+    expect(result!.href).toContain("style=bee");
+    expect(result!.label).toContain("Léxico de Ortopensatas");
+  });
+
+  it("abre a seção pedida da Encyclossapiens", () => {
+    const section = (value: string) =>
+      actionsFromMatches(
+        [{ intent: "encyclossapiens", term: "", confidence: 1, section: value }],
+        context(),
+      )[0]!.href;
+    expect(section("kit")).toContain("kit-verbetografo");
+    expect(section("enciclopedia")).toContain("/ec/");
+    expect(section("pesquisa")).toContain("autoverbetografia");
+  });
+});
+
+describe("repetição de pills na conversa", () => {
+  const pill = (term: string) =>
+    actionsFromMatches([{ intent: "search_verbete", term, confidence: 1 }], context())[0]!;
+
+  it("suprime o mesmo par ferramenta+termo, ignorando caixa e acento", () => {
+    expect(withoutRepeatedActions([pill("Tenepes")], [pill("tenepes")])).toHaveLength(0);
+  });
+
+  it("mantém termo diferente na mesma ferramenta", () => {
+    expect(withoutRepeatedActions([pill("proéxis")], [pill("tenepes")])).toHaveLength(1);
   });
 });

@@ -262,7 +262,7 @@ function SemanticSourceSettings({
                 ],
               ] as const
             ).map(([presentation, label, description]) => {
-              const selected = (draft.agent.presentation ?? "citations") === presentation;
+              const selected = (draft.agent.presentation ?? "classic") === presentation;
               return (
                 <button
                   key={presentation}

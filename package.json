@@ -7,6 +7,7 @@
     "dev:all": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./dev.ps1",
     "dev:silent": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./dev.ps1 -Silent",
     "agent:suite": "node scripts/agent-planner-suite.mjs",
+    "agent:follow-up-suite": "node scripts/agent-follow-up-suite.mjs",
     "validate:chat-settings": "node scripts/validate-chat-settings.mjs",
     "dev:stop": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./dev.ps1 -Stop",
     "build": "tsc -b && vite build",

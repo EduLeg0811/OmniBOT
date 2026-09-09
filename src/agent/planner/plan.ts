@@ -3,12 +3,12 @@ import {
   AGENT_BOOK_IDS,
   AGENT_CLASSIFIER_MODEL,
   AGENT_CLASSIFIER_REASONING,
-  AGENT_CONFIDENCE_HIGH,
-  AGENT_CONFIDENCE_MEDIUM,
-  AGENT_ICGE_AREAS,
   AGENT_PLANNER_TIMEOUT_MS,
   AGENT_RESOURCE_IDS,
+  AGENT_TERM_MAX_WORDS,
   AGENT_VERBETE_FIELDS,
+  CCCI_DESTINATION_IDS,
+  ENCYCLOSSAPIENS_SECTIONS,
 } from "@/agent/config";
 import { agentInstructionsFor, presentationInstructionFor } from "@/agent/planner/prompt";
 import { AGENT_PLANNER_SCHEMA } from "@/agent/planner/schema";
@@ -29,6 +29,7 @@ type PlannerAction = {
   field?: unknown;
   book?: unknown;
   area?: unknown;
+  section?: unknown;
   resource?: unknown;
   style?: unknown;
 };
@@ -40,9 +41,7 @@ export type PlannerPayload = {
   answer?: unknown;
 };
 const FAILED = Symbol("failed");
-const RESULT_CLAIM =
-  /\b(?:encontrei|não\s+encontrei|nao\s+encontrei|não\s+existe|nao\s+existe|achei|localizei|foram\s+encontrad|resultados?\s+encontrad|apenas\s+\d+|found|not\s+found|does\s+not\s+exist|only\s+\d+)\b/iu;
-const MODES: AgentResponseMode[] = ["full", "action_only", "direct", "clarify", "corpus"];
+const MODES: AgentResponseMode[] = ["full", "direct", "corpus"];
 const number01 = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 const text = (value: unknown, max = 160) =>
@@ -50,23 +49,32 @@ const text = (value: unknown, max = 160) =>
 const oneOf = <T extends readonly string[]>(value: unknown, values: T, fallback: T[number]) =>
   typeof value === "string" && values.includes(value) ? (value as T[number]) : fallback;
 const routeFor = (mode: AgentResponseMode): AgentRoute =>
-  mode === "action_only"
-    ? "direct"
-    : mode === "direct" || mode === "clarify" || mode === "corpus"
-      ? mode
-      : "full";
+  mode === "direct" || mode === "corpus" ? mode : "full";
 const empty = (reason = "classifier_unavailable"): AgentPlan => ({
   actions: [],
   responseMode: "full",
   responseConfidence: 0,
   route: "full",
   answer: "",
+  answerOrigin: "none",
   confidence: 0,
   reason,
   origin: "fallback",
 });
-const cleanTerm = (value: unknown) =>
-  text(value, 100).replace(/^[\s"'“”‘’]+|[\s"'“”‘’?.!,;:]+$/gu, "");
+/** Corta o termo em vez de anular a ação.
+ *
+ * Antes, um termo acima do limite virava string vazia e a ferramenta que exige
+ * termo era descartada em silêncio: «Técnica do Ainda Não É» e «Programa de
+ * Aceleração da Desperticidade» perdiam todos os pills do turno sem deixar
+ * rastro. Agora o excedente é cortado e o corte fica registrado. */
+const cleanTerm = (value: unknown): { term: string; truncated: boolean } => {
+  const raw = text(value, 100).replace(/^[\s"'“”‘’]+|[\s"'“”‘’?.!,;:]+$/gu, "");
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length <= AGENT_TERM_MAX_WORDS && raw.length <= 60)
+    return { term: raw, truncated: false };
+  const term = words.slice(0, AGENT_TERM_MAX_WORDS).join(" ").slice(0, 60).trim();
+  return { term, truncated: true };
+};
 
 function classifierMessage(ctx: AgentContext): string {
   const en = ctx.host.english;
@@ -103,21 +111,25 @@ export function normalizePlannerPayload(
       proposedResponseMode: proposed,
       proposedRoute: routeFor(proposed),
     };
+  let truncatedTerms = 0;
   const matches: AgentMatch[] = (Array.isArray(payload.actions) ? payload.actions : [])
-    .slice(0, 2)
+    .slice(0, 8)
     .flatMap((rawAction) => {
       const item = rawAction as PlannerAction;
       const intent = text(item.intent) as AgentIntentId;
       const confidence = number01(item.confidence);
       if (!agentTool(intent) || confidence === null) return [];
+      const { term, truncated } = cleanTerm(item.term);
+      if (truncated) truncatedTerms += 1;
       return [
         {
           intent,
           confidence,
-          term: cleanTerm(item.term),
+          term,
           field: oneOf(item.field, AGENT_VERBETE_FIELDS, "texto"),
           book: oneOf(item.book, ["", ...AGENT_BOOK_IDS] as const, ""),
-          area: oneOf(item.area, AGENT_ICGE_AREAS, ""),
+          area: oneOf(item.area, CCCI_DESTINATION_IDS, "raiz"),
+          section: oneOf(item.section, ["", ...ENCYCLOSSAPIENS_SECTIONS] as const, ""),
           resource: oneOf(item.resource, ["", ...AGENT_RESOURCE_IDS] as const, ""),
           style: oneOf(item.style, ["", "bee", "simples"] as const, ""),
         },
@@ -125,49 +137,33 @@ export function normalizePlannerPayload(
     });
   const actions = actionsFromMatches(matches, ctx);
   let effective = proposed;
-  let reason = text(payload.reason, 120) || "classifier_decision";
-  if (responseConfidence < AGENT_CONFIDENCE_MEDIUM) {
-    effective = "full";
-    reason = "low_confidence";
-  } else if (
-    ["action_only", "direct", "clarify"].includes(effective) &&
-    responseConfidence < AGENT_CONFIDENCE_HIGH
-  ) {
-    effective = "full";
-    reason = `${proposed}_requires_high_confidence`;
-  }
+  let reason = text(payload.reason, 160) || "classifier_decision";
+  // Clássico nunca consulta o corpus, mesmo que uma resposta inválida escape.
   if (ctx.settings.presentation === "classic" && effective === "corpus") {
     effective = "full";
     reason = "classic_corpus_to_full";
   }
-  if (effective === "direct" && actions.some((item) => item.id !== "list_sources")) {
-    effective = "action_only";
-    reason = "external_direct_to_action_only";
-  }
-  if (effective === "action_only" && !actions.length) {
-    effective = "full";
-    reason = "action_only_without_action";
-  }
-  const rawAnswer = typeof payload.answer === "string" ? payload.answer.trim() : "";
   let answer = text(payload.answer, AGENT_ANSWER_MAX);
-  if (effective === "full") answer = "";
-  if (
-    effective === "action_only" &&
-    (!answer || rawAnswer.length > AGENT_ANSWER_MAX || RESULT_CLAIM.test(answer))
-  ) {
-    const first = matches.find((match) => actions.some((item) => item.id === match.intent));
-    answer = first ? agentTool(first.intent)!.intro(first, ctx.host.english) : "";
+  let answerOrigin: AgentPlan["answerOrigin"] = answer ? "classifier" : "none";
+  if (effective === "full") {
+    answer = "";
+    answerOrigin = "none";
   }
-  if ((effective === "direct" || effective === "clarify" || effective === "corpus") && !answer) {
+  // Só `direct` e `corpus` respondem sem o modelo principal, e ambos precisam
+  // de um texto para mostrar. Sem ele, o turno volta ao caminho completo.
+  if (effective !== "full" && !answer) {
     effective = "full";
+    answerOrigin = "none";
     reason = "missing_direct_answer";
   }
+  if (truncatedTerms) reason = `${reason} [termo_cortado:${truncatedTerms}]`.slice(0, 200);
   return {
     actions,
     responseMode: effective,
     responseConfidence,
     route: routeFor(effective),
     answer,
+    answerOrigin,
     confidence: responseConfidence,
     reason,
     origin: "luna",
@@ -191,15 +187,22 @@ export function planAgent(ctx: AgentContext): Promise<AgentPlan> {
     ctx.host.english,
   ]);
   if (cached?.key === key) return cached.plan;
-  const plan = requestPlan(ctx).then((value) => {
+  const plan = requestPlan(ctx, key).then((value) => {
     if (value !== FAILED) return value;
-    if (cached?.key === key) cached = null;
+    invalidate(key);
     return empty();
   });
   cached = { key, plan };
   return plan;
 }
-async function requestPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED> {
+/** Descarta o cache apenas se ele ainda for desta chamada.
+ *
+ * O `catch` de uma requisição antiga apagava o slot sem olhar a chave, e com
+ * isso derrubava o plano de uma pergunta mais nova que já o havia ocupado. */
+function invalidate(key: string) {
+  if (cached?.key === key) cached = null;
+}
+async function requestPlan(ctx: AgentContext, key: string): Promise<AgentPlan | typeof FAILED> {
   if (ctx.userText.trim().length < 2) return empty();
   const instructions = [
     agentInstructionsFor(ctx.host.english),
@@ -217,7 +220,7 @@ async function requestPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED
       body: JSON.stringify({
         messages: [{ role: "user", content: classifierMessage(ctx) }],
         systemPrompt: instructions,
-        promptCacheKey: `agent-router-v2-${ctx.settings.presentation}-${ctx.host.english ? "en" : "pt"}`,
+        promptCacheKey: `agent-router-v4-${ctx.settings.presentation}-${ctx.host.english ? "en" : "pt"}`,
         model: AGENT_CLASSIFIER_MODEL,
         reasoningEffort: AGENT_CLASSIFIER_REASONING.id,
         verbosity: "low",
@@ -236,7 +239,7 @@ async function requestPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED
       result.content,
     );
   } catch {
-    cached = null;
+    invalidate(key);
     return FAILED;
   }
 }

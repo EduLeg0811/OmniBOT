@@ -3,9 +3,17 @@ import type { AgentHost } from "@/agent/host";
 import type { AgentSettings } from "@/agent/settings";
 
 export type { AgentIntentId, AgentVerbeteField };
-export type AgentRoute = "direct" | "full" | "corpus" | "clarify";
-export type AgentResponseMode = "full" | "action_only" | "direct" | "clarify" | "corpus";
+/** Ação e modo de resposta são independentes.
+ *
+ * `action_only` e `clarify` existiam e faziam o turno pular o modelo
+ * principal: uma classificação errada custava ao usuário a resposta inteira.
+ * Hoje um pill nunca substitui a resposta — só `direct` (saudação, despedida,
+ * pergunta sobre o próprio ConsBOT, list_sources) e `corpus` respondem sem o
+ * modelo principal. */
+export type AgentRoute = "direct" | "full" | "corpus";
+export type AgentResponseMode = "full" | "direct" | "corpus";
 export type AgentPlanOrigin = "luna" | "fallback" | "bypass";
+export type AgentAnswerOrigin = "none" | "classifier" | "catalog";
 export type AgentToolPolicy = "local" | "fulfills_explicit_action" | "complementary";
 export type AgentActionKind = "open-url" | "inline-result";
 
@@ -30,6 +38,7 @@ export type AgentMatch = {
   field?: AgentVerbeteField;
   book?: string;
   area?: string;
+  section?: string;
   resource?: string;
   style?: string;
 };
@@ -78,6 +87,7 @@ export type AgentPlan = {
   responseConfidence: number;
   route: AgentRoute;
   answer: string;
+  answerOrigin: AgentAnswerOrigin;
   confidence: number;
   reason: string;
   origin: AgentPlanOrigin;

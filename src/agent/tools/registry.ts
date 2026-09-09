@@ -1,12 +1,19 @@
 import {
   AGENT_BOOK_IDS,
-  AGENT_ICGE_AREAS,
+  AGENT_CONFIDENCE_MEDIUM,
   AGENT_RESOURCE_IDS,
   AGENT_TARGETS,
   AGENT_VERBETE_FIELDS,
-  ICGE_TARGETS,
+  CCCI_DESTINATIONS,
+  CCCI_DESTINATION_IDS,
+  ENCYCLOSSAPIENS_SECTIONS,
+  ENCYCLOSSAPIENS_TARGETS,
   RESOURCE_TARGETS,
   agentBook,
+  agentBookByName,
+  ccciDestination,
+  fold,
+  isBlockedCcciUrl,
 } from "@/agent/config";
 import type {
   AgentAction,
@@ -24,6 +31,17 @@ const url = (base: string, params: Record<string, string>) => {
   return target.toString();
 };
 const short = (prefix: string, term: string) => (term ? `${prefix}: ${term}` : prefix);
+/** A obra pode chegar em `book` ou escrita por extenso em `term`.
+ *
+ * O classificador tende a pôr «Léxico de Ortopensatas 2019» em `term` e deixar
+ * `book` vazio; a bibliografia então abria sem sigla, isto é, vazia. */
+const resolveBook = (match: AgentMatch) => agentBook(match.book) ?? agentBookByName(match.term);
+const encyclossapiensSection = (match: AgentMatch) =>
+  ENCYCLOSSAPIENS_TARGETS[
+    (ENCYCLOSSAPIENS_SECTIONS as readonly string[]).includes(match.section ?? "")
+      ? (match.section as keyof typeof ENCYCLOSSAPIENS_TARGETS)
+      : "kit"
+  ];
 const title = (service: string, scope: string, english: boolean) =>
   english
     ? `Opens ${service} for ${scope} in a new tab`
@@ -49,14 +67,21 @@ const action = (
     field: match.field ?? "",
     book: match.book ?? "",
     area: match.area ?? "",
+    section: match.section ?? "",
     resource: match.resource ?? "",
   },
 });
+/** O esquema é estrito: todo campo é obrigatório em toda ação, mesmo nas
+ * ferramentas que não o usam. Como o modelo é forçado a preencher, a descrição
+ * precisa dizer QUANDO deixar vazio — sem isso ele escolhe o primeiro valor
+ * plausível. Foi assim que `book` saiu como TEAT em 61,5% das ações medidas,
+ * restringindo a busca a uma obra que não continha o termo. */
 const common = {
   book: {
     type: "string",
     enum: ["", ...AGENT_BOOK_IDS],
-    description: "Obra canônica; vazio se não se aplica.",
+    description:
+      "Obra canônica. Preencha SOMENTE quando o usuário nomear a obra ou seu apelido. Em qualquer outro caso use vazio: preencher restringe a busca a um único livro e costuma zerar o resultado.",
   },
   field: {
     type: "string",
@@ -65,8 +90,19 @@ const common = {
   },
   area: {
     type: "string",
-    enum: AGENT_ICGE_AREAS,
-    description: "Macroárea ICGE; vazio quando não se aplica.",
+    enum: CCCI_DESTINATION_IDS,
+    description: [
+      "Destino do catálogo CCCI, usado apenas por catalogo_ccci. Escolha pelo que o usuário quer fazer:",
+      ...CCCI_DESTINATIONS.map((item) => `- ${item.id}: ${item.hint}`),
+    ].join("\n"),
+  },
+  section: {
+    type: "string",
+    enum: ["", ...ENCYCLOSSAPIENS_SECTIONS],
+    description: [
+      "Seção da Encyclossapiens, usada apenas por encyclossapiens; vazio para as demais ferramentas.",
+      ...ENCYCLOSSAPIENS_SECTIONS.map((id) => `- ${id}: ${ENCYCLOSSAPIENS_TARGETS[id].hint}`),
+    ].join("\n"),
   },
   resource: {
     type: "string",
@@ -95,8 +131,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "search_book: busca literal explicitamente pedida em um ou todos os livros. Não use para dúvida conceitual. Use o código canônico em book.",
     intro: ({ term }, en) =>
       en
-        ? `The literal book search for “${term}” is prepared below.`
-        : `A busca literal por “${term}” nos livros está preparada abaixo.`,
+        ? `The link below lets you search the Conscientiology books for “${term}”.`
+        : `O link a seguir permite pesquisar “${term}” nos livros da Conscienciologia.`,
     toAction: (m, c) =>
       action(
         m,
@@ -120,8 +156,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "search_verbete: busca explicitamente pedida nos verbetes da Enciclopédia. field escolhe texto, titulo, autor ou especialidade.",
     intro: ({ term }, en) =>
       en
-        ? `The entry search for “${term}” is prepared below.`
-        : `A pesquisa de “${term}” nos verbetes está preparada abaixo.`,
+        ? `The link below lets you search the Encyclopedia entries for “${term}”.`
+        : `O link a seguir permite pesquisar “${term}” nos verbetes da Enciclopédia.`,
     toAction: (m, c) =>
       action(
         m,
@@ -142,8 +178,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "search_conscienciograma: busca literal explicitamente pedida no Conscienciograma.",
     intro: ({ term }, en) =>
       en
-        ? `The Conscienciogram search for “${term}” is prepared below.`
-        : `A busca de “${term}” no Conscienciograma está preparada abaixo.`,
+        ? `The link below lets you search the Conscienciogram for “${term}”.`
+        : `O link a seguir permite pesquisar “${term}” no Conscienciograma.`,
     toAction: (m, c) =>
       action(
         m,
@@ -160,19 +196,20 @@ export const AGENT_TOOLS: AgentTool[] = [
     responsePolicy: "fulfills_explicit_action",
     describe: (en) =>
       en
-        ? "bibliografia_livros: explicit request to build or consult a book reference. Set book whenever identifiable."
-        : "bibliografia_livros: pedido explícito para montar ou consultar referência de livro. Preencha book quando identificável.",
-    intro: ({ book }, en) =>
-      en
-        ? `The ${agentBook(book)?.label ?? "book"} reference can be prepared in the module below.`
-        : `A referência de ${agentBook(book)?.label ?? "livro"} pode ser montada no módulo indicado.`,
+        ? "bibliografia_livros: explicit request to build or consult a book reference. Name the work in book, or write it out in term."
+        : "bibliografia_livros: pedido explícito para montar ou consultar referência de livro. Informe a obra em book ou escreva o nome dela em term.",
+    intro: (m, en) => {
+      const label = resolveBook(m)?.label;
+      return en
+        ? `The link below opens the bibliography module for ${label ?? "the book"}.`
+        : `O link a seguir abre o módulo de bibliografia para ${label ?? "o livro"}.`;
+    },
     toAction: (m, c) => {
-      const b = agentBook(m.book);
-      const name = b?.label ?? "";
+      const b = resolveBook(m);
       return action(
         m,
         c,
-        short(c.host.english ? "Bibliography" : "Bibliografia", name),
+        short(c.host.english ? "Bibliography" : "Bibliografia", b?.label ?? m.term),
         url(AGENT_TARGETS.bibliografia_livros, {
           sigla: b?.bibliographySigla ?? "",
           style: m.style || "simples",
@@ -192,8 +229,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "bibliografia_verbetes: pedido explícito de bibliografia de verbetes da Enciclopédia.",
     intro: ({ term }, en) =>
       en
-        ? `The entry bibliography${term ? ` for “${term}”` : ""} is prepared below.`
-        : `A bibliografia de verbetes${term ? ` para “${term}”` : ""} está preparada abaixo.`,
+        ? `The link below opens the entry bibliography module${term ? ` for “${term}”` : ""}.`
+        : `O link a seguir abre o módulo de bibliografia de verbetes${term ? ` para “${term}”` : ""}.`,
     toAction: (m, c) =>
       action(
         m,
@@ -214,8 +251,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "consulta_lexicons: consulta lexical, etimológica, sinonímica ou dicionarística explicitamente pedida. Sempre abre a Cosmovisão padrão; nunca escolha módulo.",
     intro: ({ term }, en) =>
       en
-        ? `A Cosmovision lexical consultation for “${term}” is prepared below.`
-        : `A consulta lexical em Cosmovisão para “${term}” está preparada abaixo.`,
+        ? `The link below opens a Cosmovision lexical consultation for “${term}”.`
+        : `O link a seguir abre a consulta lexical de “${term}” em Cosmovisão.`,
     toAction: (m, c) =>
       action(
         m,
@@ -236,8 +273,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "bibliomancia: pedido explícito para sortear uma ortopensata ou iniciar a Bibliomancia.",
     intro: (_m, en) =>
       en
-        ? "An orthothought draw can be started below."
-        : "O sorteio de uma ortopensata pode ser iniciado pela opção abaixo.",
+        ? "The option below starts an orthothought draw."
+        : "A opção a seguir inicia o sorteio de uma ortopensata.",
     toAction: (m, c) =>
       action(
         m,
@@ -254,51 +291,34 @@ export const AGENT_TOOLS: AgentTool[] = [
     responsePolicy: "complementary",
     describe: (en) =>
       en
-        ? "encyclossapiens: complementary resource for substantive questions about writing/submitting entries; action_only only for explicit navigation."
-        : "encyclossapiens: recurso complementar para dúvidas substantivas sobre escrita/submissão de verbetes; action_only só em navegação explícita.",
-    intro: (_m, en) =>
-      en
-        ? "The Encyclossapiens writing resources can be opened below."
-        : "Os recursos de escrita da Encyclossapiens podem ser abertos abaixo.",
-    toAction: (m, c) =>
-      action(
-        m,
-        c,
-        "Encyclossapiens",
-        AGENT_TARGETS.encyclossapiens,
-        "Encyclossapiens",
-        "recursos de verbetografia",
-      ),
+        ? "encyclossapiens: institution dedicated ONLY to entry writing and to the Encyclopedia itself. Choose the section. Never for a personal narrative or a draft pasted for revision."
+        : "encyclossapiens: instituição dedicada SOMENTE à escrita de verbetes e à própria Enciclopédia. Escolha a seção. Nunca para relato pessoal nem para rascunho colado em revisão.",
+    intro: (m, en) => {
+      const target = encyclossapiensSection(m);
+      return en
+        ? `The link below opens ${target.label} at Encyclossapiens.`
+        : `O link a seguir abre ${target.label} na Encyclossapiens.`;
+    },
+    toAction: (m, c) => {
+      const target = encyclossapiensSection(m);
+      return action(m, c, target.label, target.url, "Encyclossapiens", target.label);
+    },
   }),
   tool({
-    name: "icge",
+    name: "catalogo_ccci",
     termRequired: false,
     responsePolicy: "complementary",
     describe: (en) =>
       en
-        ? "icge: complementary link for ICGE agenda, institutions, publications, Verbetoteca, memory, videos, self-research or Holocycle. Substantive questions use full; action_only only for explicit navigation. Pick nearest macro area."
-        : "icge: link complementar para agenda, instituições, publicações, Verbetoteca, memória, vídeos, autopesquisa ou Holociclo. Perguntas substantivas usam full; action_only só em navegação explícita. Escolha a macroárea mais próxima.",
-    intro: (_m, en) =>
-      en
-        ? "The relevant ICGE area can be opened below."
-        : "A área pertinente do ICGE pode ser aberta abaixo.",
+        ? "catalogo_ccci: one curated destination in the Conscientiology community catalogue (institutional pages, activities, video, books, periodicals). Pick the destination in area. Substantive questions still get a full answer; use this only when a specific destination genuinely adds something. Never pick raiz just to have an action."
+        : "catalogo_ccci: um destino curado do catálogo da CCCI (páginas institucionais, atividades, vídeo, livros, periódicos). Escolha o destino em area. Perguntas substantivas continuam recebendo resposta; use isto só quando um destino específico acrescentar algo de fato. Nunca escolha raiz apenas para ter uma ação.",
+    intro: (m, en) => {
+      const target = ccciDestination(m.area);
+      return en ? `The link below opens ${target.label}.` : `O link a seguir abre ${target.label}.`;
+    },
     toAction: (m, c) => {
-      const area = AGENT_ICGE_AREAS.includes((m.area ?? "") as never)
-        ? ((m.area ?? "") as keyof typeof ICGE_TARGETS)
-        : "";
-      const labels: Record<string, string> = {
-        "": "ICGE",
-        agenda: "Agenda ICGE",
-        instituicoes: "Instituições",
-        publicacoes: "Publicações CCCI",
-        enciclopedia: "Verbetoteca",
-        memoria: "Memória CCCI",
-        videos: "Vídeos CCCI",
-        autopesquisa: "Autopesquisa",
-        holociclo: "Holociclo",
-      };
-      const label = labels[area] ?? "ICGE";
-      return action(m, c, label, ICGE_TARGETS[area], "ICGE", label);
+      const target = ccciDestination(m.area);
+      return action(m, c, target.label, target.url, target.label, target.label);
     },
   }),
   tool({
@@ -311,8 +331,8 @@ export const AGENT_TOOLS: AgentTool[] = [
         : "open_resource: SOMENTE pedido explícito de acesso, navegação ou método de estudo para periodicos, enciclopedia, livros_pdf, quiz, flashcards, consgpt ou conslm. Nunca promova ConsGPT/ConsLM espontaneamente.",
     intro: (_m, en) =>
       en
-        ? "The requested resource can be opened below."
-        : "O recurso solicitado pode ser aberto abaixo.",
+        ? "The link below opens the requested resource."
+        : "O link a seguir abre o recurso solicitado.",
     toAction: (m, c) => {
       const resource = AGENT_RESOURCE_IDS.includes((m.resource ?? "") as never)
         ? (m.resource as keyof typeof RESOURCE_TARGETS)
@@ -355,24 +375,52 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 export const MAX_AGENT_ACTIONS = 2;
+
+/** Identidade de um pill para efeito de repetição: a ferramenta mais o termo,
+ * dobrado para ignorar acento, caixa e ligadura. */
+export function agentActionKey(action: Pick<AgentAction, "id" | "meta">): string {
+  return `${action.id}|${fold(action.meta?.term ?? "")}`;
+}
+
+/** Remove o pill que já apareceu há poucos turnos.
+ *
+ * As séries longas da amostra ficam 6 a 10 turnos no mesmo tema, e sem isto o
+ * mesmo par ferramenta+termo reaparece embaixo de cada resposta. */
+export function withoutRepeatedActions(
+  actions: AgentAction[],
+  recent: readonly Pick<AgentAction, "id" | "meta">[],
+): AgentAction[] {
+  const seen = new Set(recent.map(agentActionKey));
+  return actions.filter((action) => !seen.has(agentActionKey(action)));
+}
 export function agentTool(name: string) {
   return AGENT_TOOLS.find((item) => item.name === name);
 }
 export function actionsFromMatches(matches: AgentMatch[], ctx: AgentContext): AgentAction[] {
   const seen = new Set<AgentIntentId>();
-  return matches
-    .filter((match) => match.confidence >= 0.55)
-    .filter((match) => {
-      const item = agentTool(match.intent);
-      if (!item || seen.has(match.intent) || (item.termRequired && !match.term)) return false;
-      if (
-        match.intent === "open_resource" &&
-        !AGENT_RESOURCE_IDS.includes((match.resource ?? "") as never)
-      )
-        return false;
-      seen.add(match.intent);
-      return true;
-    })
-    .slice(0, MAX_AGENT_ACTIONS)
-    .map((match, position) => ({ ...agentTool(match.intent)!.toAction(match, ctx), position }));
+  return (
+    [...matches]
+      // Ordenar antes de cortar. Antes o corte vinha primeiro, em duas etapas,
+      // e uma ação de confiança alta podia ser descartada para dar lugar a
+      // outra, mais fraca, só por ter vindo antes na lista do modelo.
+      .sort((left, right) => right.confidence - left.confidence)
+      .filter((match) => match.confidence >= AGENT_CONFIDENCE_MEDIUM)
+      .filter((match) => {
+        const item = agentTool(match.intent);
+        if (!item || seen.has(match.intent) || (item.termRequired && !match.term)) return false;
+        if (
+          match.intent === "open_resource" &&
+          !AGENT_RESOURCE_IDS.includes((match.resource ?? "") as never)
+        )
+          return false;
+        seen.add(match.intent);
+        return true;
+      })
+      .slice(0, MAX_AGENT_ACTIONS)
+      .map((match, position) => ({ ...agentTool(match.intent)!.toAction(match, ctx), position }))
+      // Defesa em profundidade: os destinos vetados não constam do catálogo,
+      // mas uma variável de ambiente ou um id reintroduzido por engano não
+      // devem conseguir virar pill.
+      .filter((item) => !isBlockedCcciUrl(item.href))
+  );
 }

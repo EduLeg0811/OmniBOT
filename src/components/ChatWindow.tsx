@@ -35,16 +35,26 @@ import {
 import { API_BASE } from "@/lib/main-server";
 import { logFeatureAccess } from "@/lib/access-log";
 import {
+  AGENT_PILL_DEDUPE_TURNS,
+  AGENT_TRIAGE_BUDGET_MS,
   AgentActions,
   AgentStatus,
   buildAgentResponseContext,
   executeAgentAction,
+  withoutRepeatedActions,
   sourceListAnswer,
   sourceListErrorAnswer,
   triageAgent,
+  AGENT_FOLLOW_UP_CONFIG,
   AGENT_FOLLOW_UP_SCHEMA,
+  agentFollowUpEligibility,
   agentFollowUpPrompt,
-  normalizeAgentFollowUpQuestion,
+  agentFollowUpSchemaDescription,
+  selectAgentFollowUp,
+  visibleLegacyAgentFollowUp,
+  type AgentFollowUpHistoryTurn,
+  type AgentFollowUpMetadata,
+  type AgentFollowUpOrigin,
   type AgentFollowUpPayload,
   type AgentAction,
   type AgentHost,
@@ -109,6 +119,28 @@ function pillsForAudit(actions: AgentAction[]): AgentPillMetadata[] {
     }));
 }
 
+/** Resolve com o valor da promessa, ou com null se o orçamento estourar.
+ *
+ * A triagem continua correndo depois disso — o que se abandona é a espera, não
+ * a classificação. */
+function withinBudget<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), ms);
+    }),
+  ]);
+}
+
+/** Pills exibidos nos últimos turnos, para não repetir o mesmo embaixo de cada
+ * resposta enquanto a conversa fica no mesmo tema. */
+function recentAgentActions(messages: ConsBotUIMessage[], turns: number): AgentAction[] {
+  return messages
+    .filter((message) => message.role === "user")
+    .slice(-turns)
+    .flatMap((message) => message.metadata?.agentPlan?.actions ?? []);
+}
+
 function agentPillsAuditMeta(agentPills: AgentPillMetadata[] | undefined) {
   if (!agentPills || !agentPills.length) return {};
   return {
@@ -127,12 +159,18 @@ function agentAuditMeta(triage: AgentTriage | null) {
     agent_origin: triage.origin,
     agent_confidence: triage.confidence,
     agent_response_confidence: triage.responseConfidence,
+    agent_answer_origin: triage.answerOrigin,
     agent_reason: triage.reason,
     agent_action_count: triage.actions.length,
     ...(triage.durationMs === undefined ? {} : { agent_duration_ms: triage.durationMs }),
   };
 }
 
+/** Como o turno JÁ GRAVADO deve ser desenhado.
+ *
+ * O padrão aqui continua Citações de propósito, ao contrário do padrão de
+ * preferência: turnos anteriores ao campo `presentation` foram exibidos assim,
+ * e mudar o padrão redesenharia conversas antigas. */
 function agentPresentationForTurn(message: ConsBotUIMessage | undefined): "citations" | "classic" {
   const plan = message?.metadata?.agentPlan;
   return plan?.presentation === "classic" ? "classic" : "citations";
@@ -168,7 +206,7 @@ function turnConfigSnapshot(settings: ChatSettings): TurnConfigSnapshot {
     semanticSources: (settings.semanticSourceIds ?? []).map((id) => id.toUpperCase()),
     agent: {
       enabled: settings.agent.enabled,
-      presentation: settings.agent.presentation ?? "citations",
+      presentation: settings.agent.presentation ?? "classic",
       followUpSuggestions: settings.agent.followUpSuggestions,
     },
   };
@@ -328,6 +366,34 @@ function getMessageText(message: ConsBotUIMessage): string {
     .trim();
 }
 
+function followUpHistory(messages: ConsBotUIMessage[]): AgentFollowUpHistoryTurn[] {
+  const turns: AgentFollowUpHistoryTurn[] = [];
+  for (let index = 0; index < messages.length - 1; index += 1) {
+    const user = messages[index];
+    const assistant = messages[index + 1];
+    if (user?.role !== "user" || assistant?.role !== "assistant") continue;
+    const userQuestion = getMessageText(user);
+    const assistantResponse = getMessageText(assistant);
+    if (!userQuestion || !assistantResponse) continue;
+    turns.push({
+      userQuestion,
+      assistantResponse,
+      ...(user.metadata?.agentFollowUpOrigin
+        ? { followUp: user.metadata.agentFollowUpOrigin }
+        : {}),
+    });
+  }
+  return turns.slice(-AGENT_FOLLOW_UP_CONFIG.maxHistoryTurns);
+}
+
+function displayedFollowUpCount(messages: ConsBotUIMessage[]): number {
+  return messages.filter(
+    (message) =>
+      message.role === "assistant" &&
+      Boolean(message.metadata?.agentFollowUp?.question ?? message.metadata?.agentFollowUpQuestion),
+  ).length;
+}
+
 function messageHasVisibleContent(message: ConsBotUIMessage): boolean {
   return message.parts.some(
     (part) =>
@@ -348,6 +414,10 @@ type PendingAccessLog = {
   value: string;
   chat_id: string;
   meta: Record<string, unknown>;
+};
+
+type SubmitOptions = {
+  followUpOrigin?: AgentFollowUpOrigin;
 };
 
 type Props = {
@@ -422,8 +492,17 @@ export function ChatWindow({
   const pendingAgentResponseContextRef = useRef("");
   const pendingFollowUpRef = useRef<{
     userText: string;
+    previousUserText: string;
+    actions: AgentAction[];
+    responseMode: "full";
+    recentTurns: AgentFollowUpHistoryTurn[];
+    currentFollowUp?: AgentFollowUpMetadata;
+    displayedFollowUpCount: number;
     isEnglish: boolean;
   } | null>(null);
+  const generatedFollowUpMessageIdsRef = useRef(new Set<string>());
+  const activeThreadIdRef = useRef(threadId);
+  activeThreadIdRef.current = threadId;
   const auditCompleteRef = useRef(onAuditComplete);
   const initialUrlQuestionProcessedRef = useRef(false);
   auditCompleteRef.current = onAuditComplete;
@@ -610,32 +689,62 @@ export function ChatWindow({
     async ({
       assistantMessageId,
       userText,
+      previousUserText,
       assistantText,
+      actions,
+      responseMode,
+      recentTurns,
+      currentFollowUp,
+      displayedCount,
       english,
     }: {
       assistantMessageId: string;
       userText: string;
+      previousUserText: string;
       assistantText: string;
+      actions: AgentAction[];
+      responseMode: "full";
+      recentTurns: AgentFollowUpHistoryTurn[];
+      currentFollowUp?: AgentFollowUpMetadata;
+      displayedCount: number;
       english: boolean;
     }) => {
-      if (!assistantText.trim()) return;
+      const eligibility = agentFollowUpEligibility({
+        enabled: true,
+        responseMode,
+        userQuestion: userText,
+        assistantResponse: assistantText,
+        displayedFollowUpCount: displayedCount,
+      });
+      if (!eligibility.eligible) return;
+      if (generatedFollowUpMessageIdsRef.current.has(assistantMessageId)) return;
+      generatedFollowUpMessageIdsRef.current.add(assistantMessageId);
+      const targetThreadId = threadId;
+      const followUpContext = {
+        userQuestion: userText,
+        previousUserQuestion: previousUserText,
+        assistantResponse: assistantText,
+        actions,
+        recentTurns,
+        currentFollowUp,
+      };
 
       const requestBody = {
         messages: [
           {
             role: "user",
-            content: agentFollowUpPrompt(userText, assistantText, english),
+            content: agentFollowUpPrompt(followUpContext, english),
           },
         ],
         model: "gpt-5.6-luna",
         reasoningEffort: "none",
         verbosity: "low",
+        promptCacheKey: english ? "agent-follow-up-v3-en" : "agent-follow-up-v3-pt",
         responseSchema: AGENT_FOLLOW_UP_SCHEMA,
         responseSchemaName: english ? "agent_follow_up" : "continuidade_agent",
-        responseSchemaDescription: english
-          ? "One concise follow-up question derived from the assistant response, ideally 3 and at most 5 words."
-          : "Uma pergunta concisa de continuidade derivada da resposta, idealmente com 3 e no máximo 5 palavras.",
+        responseSchemaDescription: agentFollowUpSchemaDescription(english),
       };
+      const startedAt = performance.now();
       const auditId = onAuditStart({
         endpoint: `${API_BASE}/api/llm`,
         sentAt: new Date().toISOString(),
@@ -647,6 +756,7 @@ export function ChatWindow({
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(AGENT_FOLLOW_UP_CONFIG.timeoutMs),
         });
         const result = (await response.json()) as {
           content?: string;
@@ -660,43 +770,65 @@ export function ChatWindow({
           throw new Error(result.detail || "Não foi possível gerar a pergunta de continuidade.");
         }
 
-        const parsed = result.content ? (JSON.parse(result.content) as AgentFollowUpPayload) : {};
-        const question = normalizeAgentFollowUpQuestion(parsed.question);
-        if (!question) {
-          throw new Error("A pergunta de continuidade não respeitou o limite de cinco palavras.");
+        let parsed: AgentFollowUpPayload = {};
+        if (result.content) {
+          try {
+            parsed = JSON.parse(result.content) as AgentFollowUpPayload;
+          } catch {
+            parsed = {};
+          }
         }
-
-        setMessages((existing) =>
-          existing.map((message) =>
-            message.id === assistantMessageId
-              ? {
-                  ...message,
-                  metadata: { ...message.metadata, agentFollowUpQuestion: question },
-                }
-              : message,
-          ),
-        );
+        const evaluation = selectAgentFollowUp(parsed, followUpContext);
+        const selection =
+          activeThreadIdRef.current === targetThreadId ? evaluation.selection : null;
+        if (selection) {
+          setMessages((existing) =>
+            existing.map((message) =>
+              message.id === assistantMessageId
+                ? {
+                    ...message,
+                    metadata: {
+                      ...message.metadata,
+                      agentFollowUp: selection satisfies AgentFollowUpMetadata,
+                      agentFollowUpQuestion: selection.question,
+                    },
+                  }
+                : message,
+            ),
+          );
+        }
         onAuditComplete(auditId, {
           openaiRequest: result.request,
           response: { responseId: result.responseId, model: result.model, usage: result.usage },
-          uiResponse: { question, assistantMessageId },
+          uiResponse: {
+            assistantMessageId,
+            selection,
+            candidateCount: evaluation.candidateCount,
+            rejections: evaluation.rejections,
+            reason:
+              activeThreadIdRef.current === targetThreadId ? evaluation.reason : "thread_changed",
+            durationMs: Math.round(performance.now() - startedAt),
+          },
         });
       } catch (error) {
+        const timeout = error instanceof DOMException && error.name === "TimeoutError";
         onAuditComplete(
           auditId,
           {
             response: {
-              error:
-                error instanceof Error
+              error: timeout
+                ? "follow_up_timeout"
+                : error instanceof Error
                   ? error.message
-                  : "Não foi possível gerar a pergunta de continuidade.",
+                  : "follow_up_unavailable",
+              durationMs: Math.round(performance.now() - startedAt),
             },
           },
           "error",
         );
       }
     },
-    [onAuditComplete, onAuditStart, setMessages],
+    [onAuditComplete, onAuditStart, setMessages, threadId],
   );
 
   const restoredRef = useRef(false);
@@ -869,14 +1001,20 @@ export function ChatWindow({
       void generateAgentFollowUp({
         assistantMessageId: lastAssistant.id,
         userText: followUpContext.userText,
+        previousUserText: followUpContext.previousUserText,
         assistantText,
+        actions: followUpContext.actions,
+        responseMode: followUpContext.responseMode,
+        recentTurns: followUpContext.recentTurns,
+        currentFollowUp: followUpContext.currentFollowUp,
+        displayedCount: followUpContext.displayedFollowUpCount,
         english: followUpContext.isEnglish,
       });
     }
   }, [generateAgentFollowUp, isBusy, messages, onAuditComplete, setMessages]);
 
   const submit = useCallback(
-    async (text: string) => {
+    async (text: string, options: SubmitOptions = {}) => {
       pendingAgentPillsRef.current = [];
       pendingFollowUpRef.current = null;
       const value = text.trim();
@@ -938,13 +1076,20 @@ export function ChatWindow({
         const historico = lastAssistantText(messages);
         const previousUser = [...messages].reverse().find((message) => message.role === "user");
         const previousUserText = previousUser ? getMessageText(previousUser) : "";
+        const recentTurns = followUpHistory(messages);
+        const followUpCount = displayedFollowUpCount(messages);
+        const followUpOrigin = options.followUpOrigin;
         setMessages((existing) => [
           ...existing,
           {
             id: echoId,
             role: "user",
             parts: [{ type: "text", text: value }],
-            metadata: { ragVectorStoreId: current.vectorStoreId, turnConfig: configSnapshot },
+            metadata: {
+              ragVectorStoreId: current.vectorStoreId,
+              turnConfig: configSnapshot,
+              ...(followUpOrigin ? { agentFollowUpOrigin: followUpOrigin } : {}),
+            },
           },
         ]);
 
@@ -961,27 +1106,40 @@ export function ChatWindow({
           host: agentHost,
           threadId,
         };
-        const triage = manualCorpus ? null : await triageAgent(agentContext);
+        // A triagem custa segundos — medido em 411 perguntas: p50 2,6 s, p90
+        // 4,5 s. Bloquear o turno inteiro nesse tempo era o que deixava a tela
+        // parada depois do envio. Aqui se espera só o orçamento: dentro dele
+        // vale o caminho completo, com `direct` respondendo sem o modelo
+        // principal; fora dele o turno segue e os pills entram quando chegarem.
+        const recentActions = recentAgentActions(messages, AGENT_PILL_DEDUPE_TURNS);
+        const triagePromise = manualCorpus ? null : triageAgent(agentContext);
+        const triage = triagePromise
+          ? await withinBudget(triagePromise, AGENT_TRIAGE_BUDGET_MS)
+          : null;
+        const speculative = Boolean(triagePromise) && !triage;
 
         if (preparationCancelledRef.current) return;
 
         const classifierTrace = triage?.classifierResponse
           ? { model: "ConsBOT Luna", response: triage.classifierResponse }
           : undefined;
-        const plannedActions = (triage?.actions ?? []).map((action, position) => ({
-          ...action,
-          position,
-          turnId: echoId,
-        }));
+        const plannedActions = withoutRepeatedActions(triage?.actions ?? [], recentActions).map(
+          (action, position) => ({
+            ...action,
+            position,
+            turnId: echoId,
+          }),
+        );
         const agentPlan =
           triage && triage.origin !== "bypass"
             ? {
                 route: triage!.mode,
                 responseMode: triage.responseMode,
                 responseConfidence: triage.responseConfidence,
+                answerOrigin: triage.answerOrigin,
                 actions: plannedActions,
                 turnId: echoId,
-                presentation: current.agent.presentation ?? "citations",
+                presentation: current.agent.presentation ?? "classic",
                 confidence: triage.confidence,
                 reason: triage.reason,
                 origin: triage.origin,
@@ -1002,6 +1160,7 @@ export function ChatWindow({
             meta: {
               route: agentPlan.route,
               response_mode: agentPlan.responseMode,
+              answer_origin: agentPlan.answerOrigin,
               proposed_route: agentPlan.proposedRoute ?? agentPlan.route,
               proposed_response_mode: agentPlan.proposedResponseMode ?? agentPlan.responseMode,
               origin: agentPlan.origin,
@@ -1041,12 +1200,9 @@ export function ChatWindow({
         // da normalização do planejador, Clássico nunca consulta o corpus.
         const classicAgent = current.agent.presentation === "classic";
         const useCorpus = manualCorpus || (!classicAgent && triage?.mode === "corpus");
-        const willAnswerDirectly =
-          manualCorpus ||
-          triage?.responseMode === "action_only" ||
-          triage?.responseMode === "direct" ||
-          triage?.responseMode === "clarify" ||
-          useCorpus;
+        // Um pill nunca substitui a resposta. Só saudação, despedida, pergunta
+        // sobre o próprio ConsBOT e o corpus dispensam o modelo principal.
+        const willAnswerDirectly = manualCorpus || triage?.responseMode === "direct" || useCorpus;
         let semanticContext: SemanticContextTurn | null = null;
 
         if (useCorpus) {
@@ -1149,14 +1305,23 @@ export function ChatWindow({
             ),
             directMessage,
           ]);
-          if (current.agent.followUpSuggestions) {
-            void generateAgentFollowUp({
-              assistantMessageId: directMessage.id,
-              userText: value,
-              assistantText: directAnswer,
-              english: isEnglish,
-            });
-          }
+          const directFollowUpEligibility = agentFollowUpEligibility({
+            enabled: current.agent.enabled && current.agent.followUpSuggestions,
+            responseMode: manualCorpus ? "corpus" : (triage?.responseMode ?? "direct"),
+            userQuestion: value,
+            assistantResponse: directAnswer,
+          });
+          onAuditInteraction({
+            module: "agent",
+            action: "follow_up_eligibility",
+            label: "Elegibilidade da continuidade",
+            value: directFollowUpEligibility.reason,
+            meta: {
+              eligible: directFollowUpEligibility.eligible,
+              response_mode: manualCorpus ? "corpus" : (triage?.responseMode ?? "direct"),
+              turn_id: echoId,
+            },
+          });
           pendingEchoIdRef.current = null;
           pendingAgentPillsRef.current = [];
 
@@ -1216,8 +1381,34 @@ export function ChatWindow({
         pendingEchoIdRef.current = null;
         pendingAgentPillsRef.current = agentPills;
         pendingAgentResponseContextRef.current = agentResponseContext;
-        pendingFollowUpRef.current = current.agent.followUpSuggestions
-          ? { userText: value, isEnglish }
+        const followUpEligibility = agentFollowUpEligibility({
+          enabled: current.agent.enabled && current.agent.followUpSuggestions,
+          responseMode: triage?.responseMode ?? "full",
+          userQuestion: value,
+          displayedFollowUpCount: followUpCount,
+        });
+        onAuditInteraction({
+          module: "agent",
+          action: "follow_up_eligibility",
+          label: "Elegibilidade da continuidade",
+          value: followUpEligibility.reason,
+          meta: {
+            eligible: followUpEligibility.eligible,
+            response_mode: triage?.responseMode ?? "full",
+            turn_id: echoId,
+          },
+        });
+        pendingFollowUpRef.current = followUpEligibility.eligible
+          ? {
+              userText: value,
+              previousUserText,
+              actions: plannedActions,
+              responseMode: "full",
+              recentTurns,
+              ...(followUpOrigin ? { currentFollowUp: followUpOrigin } : {}),
+              displayedFollowUpCount: followUpCount,
+              isEnglish,
+            }
           : null;
 
         void sendMessage({
@@ -1227,8 +1418,73 @@ export function ChatWindow({
             turnConfig: configSnapshot,
             ...(classifierTrace ? { agentClassifier: classifierTrace } : {}),
             ...(agentPlan ? { agentPlan } : {}),
+            ...(followUpOrigin ? { agentFollowUpOrigin: followUpOrigin } : {}),
           },
         });
+
+        // Turno especulativo: a resposta já partiu sem a triagem. Quando ela
+        // chega, os pills entram no turno que estiver na tela. O modo proposto
+        // é ignorado de propósito — a resposta já está sendo escrita, e um
+        // pill jamais a substitui.
+        if (speculative && triagePromise) {
+          void triagePromise.then((late) => {
+            if (!late || late.origin === "bypass") return;
+            if (activeThreadIdRef.current !== threadId) return;
+            const lateActions = withoutRepeatedActions(late.actions, recentActions);
+            if (!lateActions.length) return;
+            // Fora do atualizador de estado: o React pode chamá-lo mais de uma
+            // vez, e a auditoria não deve contar o mesmo pill duas vezes.
+            pendingAgentPillsRef.current = pillsForAudit(lateActions);
+            setMessages((existing) => {
+              const target = [...existing].reverse().find((message) => message.role === "user");
+              if (!target) return existing;
+              const actions = lateActions.map((action, position) => ({
+                ...action,
+                position,
+                turnId: target.id,
+              }));
+              return existing.map((message) =>
+                message.id === target.id
+                  ? {
+                      ...message,
+                      metadata: {
+                        ...message.metadata,
+                        agentPlan: {
+                          route: late.mode,
+                          responseMode: late.responseMode,
+                          responseConfidence: late.responseConfidence,
+                          answerOrigin: late.answerOrigin,
+                          actions,
+                          turnId: target.id,
+                          presentation: current.agent.presentation ?? "classic",
+                          confidence: late.confidence,
+                          reason: `${late.reason} [especulativo]`,
+                          origin: late.origin,
+                          ...(late.durationMs === undefined ? {} : { durationMs: late.durationMs }),
+                        },
+                      },
+                    }
+                  : message,
+              );
+            });
+            onAuditInteraction({
+              module: "agent",
+              action: "classifier_decision",
+              label: "Decisão do classificador (especulativa)",
+              value: late.mode,
+              meta: {
+                route: late.mode,
+                response_mode: late.responseMode,
+                origin: late.origin,
+                confidence: late.confidence,
+                reason: late.reason,
+                speculative: true,
+                turn_id: echoId,
+                ...(late.durationMs === undefined ? {} : { duration_ms: late.durationMs }),
+              },
+            });
+          });
+        }
       } finally {
         // A partir daqui quem sinaliza atividade é o `status` do useChat.
         submittingRef.current = false;
@@ -1240,7 +1496,6 @@ export function ChatWindow({
     },
     [
       agentHost,
-      generateAgentFollowUp,
       isBusy,
       messages,
       isEnglish,
@@ -1677,6 +1932,24 @@ export function ChatWindow({
               const classicAgentTurn =
                 precedingUser?.role === "user" &&
                 agentPresentationForTurn(precedingUser) === "classic";
+              const turnPlan =
+                precedingUser?.role === "user" ? precedingUser.metadata?.agentPlan : undefined;
+              const turnResponseMode =
+                turnPlan?.responseMode ?? (turnPlan?.route === "full" ? "full" : undefined);
+              const storedFollowUp =
+                message.role === "assistant"
+                  ? (message.metadata?.agentFollowUp?.question ??
+                    message.metadata?.agentFollowUpQuestion)
+                  : undefined;
+              const visibleFollowUpQuestion =
+                message.role === "assistant" && precedingUser?.role === "user"
+                  ? visibleLegacyAgentFollowUp({
+                      question: storedFollowUp,
+                      responseMode: turnResponseMode,
+                      userQuestion: getMessageText(precedingUser),
+                      actions: turnPlan?.actions ?? [],
+                    })
+                  : null;
               const waitingForThisAssistant = isBusy && messageIndex === messages.length - 1;
               const hasVisibleContent = messageHasVisibleContent(message);
               const ragStatus =
@@ -1772,31 +2045,43 @@ export function ChatWindow({
                   {message.role === "assistant" &&
                   precedingUser?.role === "user" &&
                   !waitingForThisAssistant &&
-                  (classicAgentTurn || message.metadata?.agentFollowUpQuestion) ? (
+                  (classicAgentTurn || visibleFollowUpQuestion) ? (
                     <div className="mt-2">
                       <AgentActions
                         threadId={threadId}
                         settings={settings.agent}
                         host={agentHost}
                         userMessage={precedingUser}
-                        followUpQuestion={message.metadata?.agentFollowUpQuestion}
+                        followUpQuestion={visibleFollowUpQuestion ?? undefined}
                         showExternalActions={classicAgentTurn}
                         disabled={isBusy}
                         onFollowUp={(question) => {
+                          const selectedFollowUp = message.metadata?.agentFollowUp;
+                          const previousOrigin = precedingUser.metadata?.agentFollowUpOrigin;
+                          const followUpOrigin = selectedFollowUp
+                            ? {
+                                ...selectedFollowUp,
+                                chainId: previousOrigin?.chainId ?? precedingUser.id,
+                                depth: (previousOrigin?.depth ?? 0) + 1,
+                                parentAssistantMessageId: message.id,
+                              }
+                            : undefined;
                           logFeatureAccess({
                             module: "consbot",
                             action: "pill_click",
                             label: "Pergunta de continuidade",
                             value: question,
                             chat_id: threadId,
+                            meta: followUpOrigin,
                           });
                           onAuditInteraction({
                             module: "agent",
                             action: "pill_click",
                             label: "Pergunta de continuidade",
                             value: question,
+                            meta: followUpOrigin,
                           });
-                          void submit(question);
+                          void submit(question, { followUpOrigin });
                         }}
                         expandedByDefault
                       />

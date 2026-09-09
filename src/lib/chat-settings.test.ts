@@ -110,8 +110,14 @@ describe("chat settings", () => {
     expect(settings.semanticSourceIds).toEqual(["lo"]);
   });
 
-  it("normaliza conversas antigas para a apresentação Citações do Agent", () => {
-    expect(normalizeAgentSettings({ enabled: true, prompt: "" }).presentation).toBe("citations");
+  it("normaliza conversas antigas para o Clássico, que é o padrão do Agent", () => {
+    // Antes daqui saía "citations" para qualquer objeto parcial, contrariando
+    // AGENT_SETTINGS_DEFAULT: a apresentação efetiva dependia de por qual
+    // caminho as settings tinham passado.
+    expect(normalizeAgentSettings({ enabled: true, prompt: "" }).presentation).toBe("classic");
+    expect(
+      normalizeAgentSettings({ enabled: true, prompt: "", presentation: "citations" }).presentation,
+    ).toBe("citations");
     expect(normalizeAgentSettings({ enabled: true, prompt: "" }).followUpSuggestions).toBe(true);
   });
 

@@ -16,7 +16,7 @@ export type AgentSettings = {
   prompt: string;
   /** Define se Luna pode recuperar corpus ou apenas oferecer direcionamentos. */
   presentation: AgentPresentation;
-  /** Gera uma pergunta curta de continuidade após cada resposta do Agent. */
+  /** Gera uma pergunta curta e ancorada após respostas substantivas em modo full. */
   followUpSuggestions: boolean;
 };
 
@@ -34,7 +34,10 @@ export function normalizeAgentSettings(
   return {
     enabled: typeof value?.enabled === "boolean" ? value.enabled : AGENT_SETTINGS_DEFAULT.enabled,
     prompt: typeof value?.prompt === "string" ? value.prompt : "",
-    presentation: value?.presentation === "classic" ? "classic" : "citations",
+    // O padrão é Clássico, como em AGENT_SETTINGS_DEFAULT. Antes daqui saía
+    // "citations" para qualquer objeto parcial, e a preferência efetiva
+    // dependia de por qual caminho as settings tinham passado.
+    presentation: value?.presentation === "citations" ? "citations" : "classic",
     followUpSuggestions:
       typeof value?.followUpSuggestions === "boolean"
         ? value.followUpSuggestions

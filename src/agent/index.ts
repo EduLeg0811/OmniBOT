@@ -34,10 +34,23 @@ export {
   sourceListAnswer,
   sourceListErrorAnswer,
 } from "@/agent/tools/list-sources";
+export { agentActionKey, withoutRepeatedActions } from "@/agent/tools/registry";
+export { AGENT_PILL_DEDUPE_TURNS, AGENT_TRIAGE_BUDGET_MS } from "@/agent/config";
 export {
+  AGENT_FOLLOW_UP_CONFIG,
+  AGENT_FOLLOW_UP_DIMENSIONS,
   AGENT_FOLLOW_UP_SCHEMA,
+  agentFollowUpEligibility,
   agentFollowUpPrompt,
+  agentFollowUpSchemaDescription,
   normalizeAgentFollowUpQuestion,
+  selectAgentFollowUp,
+  visibleLegacyAgentFollowUp,
+  type AgentFollowUpContext,
+  type AgentFollowUpEvaluation,
+  type AgentFollowUpHistoryTurn,
+  type AgentFollowUpMetadata,
+  type AgentFollowUpOrigin,
   type AgentFollowUpPayload,
 } from "@/agent/follow-up";
 export {
@@ -47,4 +60,10 @@ export {
   type AgentSettings,
 } from "@/agent/settings";
 export type { AgentEvent, AgentHost } from "@/agent/host";
-export type { AgentAction, AgentPlanOrigin, AgentResponseMode, AgentRoute } from "@/agent/types";
+export type {
+  AgentAction,
+  AgentAnswerOrigin,
+  AgentPlanOrigin,
+  AgentResponseMode,
+  AgentRoute,
+} from "@/agent/types";

@@ -97,6 +97,7 @@ export type ConsBotMessageMetadata = {
     route: AgentRoute;
     responseMode?: AgentResponseMode;
     responseConfidence?: number;
+    answerOrigin?: import("@/agent/types").AgentAnswerOrigin;
     actions: AgentAction[];
     presentation?: AgentPresentation;
     confidence?: number;
@@ -108,8 +109,12 @@ export type ConsBotMessageMetadata = {
     durationMs?: number;
   };
   agentPills?: AgentPillMetadata[];
-  /** Pergunta curta sugerida a partir da resposta deste turno. */
+  /** Contrato v2 da continuidade: pergunta validada e sua âncora na resposta. */
+  agentFollowUp?: import("@/agent/follow-up").AgentFollowUpMetadata;
+  /** Campo derivado preservado para históricos e consumidores antigos. */
   agentFollowUpQuestion?: string;
+  /** Origem de uma pergunta enviada pelo clique em um pill de continuidade. */
+  agentFollowUpOrigin?: import("@/agent/follow-up").AgentFollowUpOrigin;
   liked?: boolean;
 };
 

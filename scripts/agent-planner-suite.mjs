@@ -57,7 +57,7 @@ async function loadPlanner() {
       'export { AGENT_TOOLS } from "@/agent/tools/registry";',
       'export { actionsFromMatches } from "@/agent/tools/registry";',
       'export { normalizePlannerPayload } from "@/agent/planner/plan";',
-      'export { AGENT_CONFIDENCE_HIGH, AGENT_CONFIDENCE_MEDIUM } from "@/agent/config";',
+      'export { AGENT_CLASSIFIER_REASONING, AGENT_CONFIDENCE_MEDIUM } from "@/agent/config";',
     ].join("\n"),
   );
 
@@ -86,19 +86,29 @@ async function loadPlanner() {
   return { planner, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
+/** Cópia fiel de classifierMessage() de src/agent/planner/plan.ts — função
+ * privada, não exportada. Sem histórico: a ficha traz um turno só. Se aquela
+ * mudar, esta precisa acompanhar. */
+function classifierMessage(question) {
+  return [
+    "Fontes: File Search ativo; semânticas: LO; apresentação: classic.",
+    `Pergunta atual:\n${question.trim()}`,
+  ].join("\n\n");
+}
+
 async function classify(planner, instructions, schema, question) {
   const response = await fetch(`${API_BASE}/api/llm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      // Mesma forma de requisição que `planner/plan.ts` usa: instruções no
-      // systemPrompt, pergunta sozinha na mensagem. A suíte só vale enquanto
-      // medir o que o app manda.
-      messages: [{ role: "user", content: question }],
+      // Mesma forma de requisição que `planner/plan.ts` usa. A pergunta vai
+      // dentro do MESMO envelope da produção — antes ia crua, e a suíte
+      // media um prompt que o app nunca envia.
+      messages: [{ role: "user", content: classifierMessage(question) }],
       systemPrompt: instructions,
-      promptCacheKey: "agent-planner-pt",
+      promptCacheKey: "agent-router-v4-classic-pt",
       model: MODEL,
-      reasoningEffort: "none",
+      reasoningEffort: planner.AGENT_CLASSIFIER_REASONING.id,
       verbosity: "low",
       responseSchema: schema,
       responseSchemaName: "agent_intent",
@@ -199,7 +209,9 @@ async function main() {
     }
 
     const hits = runs.filter((run) => same(run.intents, testCase.expect)).length;
-    const wanted = testCase.mode ?? (testCase.expect.length > 0 ? "action_only" : "full");
+    // Uma ação não muda mais o modo: pills acompanham a resposta em vez de
+    // substituí-la. O modo esperado é full salvo quando a ficha disser outro.
+    const wanted = testCase.mode ?? "full";
     const modeHits = runs.filter((run) => run.mode === wanted).length;
     return { testCase, runs, hits, wanted, modeHits };
   });
