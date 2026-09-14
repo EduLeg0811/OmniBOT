@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 // Captures the original Error out-of-band so server.ts can recover the stack
 // when h3 has already swallowed the throw into a generic 500 Response.
 
@@ -79,3 +81,71 @@ export function consumeLastCapturedError(): unknown {
   lastCapturedError = undefined;
   return error;
 }
+
+export interface TechnicalErrorDetails {
+  name: string;
+  message: string;
+  stack?: string;
+  cause?: string;
+  statusCode?: number;
+  description: string;
+  raw: string;
+  timestamp: string;
+}
+
+export function extractTechnicalErrorDetails(error: unknown): TechnicalErrorDetails {
+  const isErr = error instanceof Error;
+  const statusObj = error as { status?: unknown; statusCode?: unknown } | null;
+  const statusVal = statusObj?.status ?? statusObj?.statusCode;
+  const statusCode = typeof statusVal === "number" ? statusVal : undefined;
+
+  const name = isErr
+    ? error.name
+    : typeof error === "object" && error !== null
+      ? "ObjectError"
+      : "Error";
+  const message = isErr
+    ? error.message
+    : typeof error === "string"
+      ? error
+      : safeStringify(error);
+  const stack = isErr ? error.stack : undefined;
+  const cause =
+    isErr && error.cause
+      ? error.cause instanceof Error
+        ? describeError(error.cause)
+        : String(error.cause)
+      : undefined;
+  const description = describeError(error);
+  const raw = stack || `${name}: ${message}`;
+
+  return {
+    name,
+    message,
+    stack,
+    cause,
+    statusCode,
+    description,
+    raw,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export const LLM_UNAVAILABLE_MESSAGE = {
+  pt: {
+    title: "Sistema indisponível no momento",
+    description: "Por favor, tente novamente em instantes.",
+  },
+  en: {
+    title: "System currently unavailable",
+    description: "Please try again in a few moments.",
+  },
+} as const;
+
+export function showLlmUnavailableToast(isEnglish = false) {
+  const text = isEnglish ? LLM_UNAVAILABLE_MESSAGE.en : LLM_UNAVAILABLE_MESSAGE.pt;
+  toast.error(text.title, {
+    description: text.description,
+  });
+}
+

@@ -25,6 +25,8 @@ export type AuditLog = {
   uiResponse?: unknown;
   /** Pills disponibilizados no turno, preservados na resposta e na auditoria. */
   agentPills?: AgentPillMetadata[];
+  /** Detalhes técnicos quando a chamada encerra em erro. */
+  error?: unknown;
 };
 
 /** O que a rota /api/llm do Main-Server envia no chunk `data-llmMeta` ao
@@ -40,7 +42,7 @@ export type OpenAIAuditEvent = {
 
 export type AuditCompletion = Pick<
   AuditLog,
-  "openaiRequest" | "response" | "uiResponse" | "agentPills"
+  "openaiRequest" | "response" | "uiResponse" | "agentPills" | "error"
 >;
 
 export type AuditDataParts = {

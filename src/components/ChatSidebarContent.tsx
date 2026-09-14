@@ -482,7 +482,18 @@ export function ChatSidebarContent({
                           onCopy={() => void copyLog(log.request)}
                         />
                       )}
-                      {log.response ? (
+                      {log.status === "error" ? (
+                        <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 px-2.5 py-2">
+                          <p className="text-[11px] font-semibold text-destructive">
+                            Falha na chamada da LLM
+                          </p>
+                          <AuditBlock
+                            label="Detalhes técnicos do erro"
+                            value={log.error ?? log.response}
+                            onCopy={() => void copyLog(log.error ?? log.response)}
+                          />
+                        </div>
+                      ) : log.response ? (
                         <AuditBlock
                           label={
                             log.openaiRequest ? "Resposta OpenAI" : "Resposta recebida · legado"

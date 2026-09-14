@@ -34,6 +34,7 @@ import {
 } from "@/lib/chat-settings";
 import { API_BASE } from "@/lib/main-server";
 import { logFeatureAccess } from "@/lib/access-log";
+import { extractTechnicalErrorDetails, showLlmUnavailableToast } from "@/lib/error-capture";
 import {
   AGENT_PILL_DEDUPE_TURNS,
   AGENT_TRIAGE_BUDGET_MS,
@@ -654,34 +655,55 @@ export function ChatWindow({
       if (part.type === "data-llmMeta") openaiAuditRef.current = part.data;
     },
     onError: (error) => {
-      if (pendingAccessLogRef.current) {
-        const agentPills = pendingAgentPillsRef.current;
-        logFeatureAccess({
-          module: "consbot",
-          action: pendingAccessLogRef.current.action,
-          label: pendingAccessLogRef.current.label,
-          value: pendingAccessLogRef.current.value,
-          chat_id: pendingAccessLogRef.current.chat_id,
-          meta: {
-            ...pendingAccessLogRef.current.meta,
-            response: `[Erro: ${error.message || "Não foi possível responder"}]`,
-            ...agentPillsAuditMeta(agentPills),
+      const technicalDetails = extractTechnicalErrorDetails(error);
+      const pending = pendingAccessLogRef.current;
+      const agentPills = pendingAgentPillsRef.current;
+
+      logFeatureAccess({
+        module: "consbot",
+        action: pending?.action ?? "ask",
+        label: pending?.label ?? "Pergunta ao ConsBOT",
+        value: pending?.value ?? "",
+        chat_id: pending?.chat_id ?? threadId,
+        meta: {
+          ...(pending?.meta ?? {}),
+          status: "error",
+          error: {
+            name: technicalDetails.name,
+            message: technicalDetails.message,
+            stack: technicalDetails.stack,
+            cause: technicalDetails.cause,
+            statusCode: technicalDetails.statusCode,
+            description: technicalDetails.description,
           },
-        });
-        pendingAccessLogRef.current = null;
-      }
+          error_details: technicalDetails.description,
+          raw_error: technicalDetails.raw,
+          response: `[Erro da LLM: ${technicalDetails.message || "Sistema indisponível no momento"}]`,
+          ...agentPillsAuditMeta(agentPills),
+        },
+      });
+      pendingAccessLogRef.current = null;
+
       streamStartedRef.current = false;
       pendingAgentPillsRef.current = [];
       pendingFollowUpRef.current = null;
+
       if (pendingAuditId.current) {
         auditCompleteRef.current(
           pendingAuditId.current,
-          { response: { error: error.message } },
+          {
+            error: technicalDetails,
+            response: {
+              error: technicalDetails.message,
+              technicalDetails,
+            },
+          },
           "error",
         );
         pendingAuditId.current = null;
       }
-      toast.error(error.message || "Não foi possível responder agora.");
+
+      showLlmUnavailableToast(isEnglish);
     },
   });
 
@@ -1643,19 +1665,48 @@ export function ChatWindow({
           uiResponse: completeSuggestions,
         });
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : isEnglish
-              ? "Unable to generate new questions."
-              : "Não foi possível gerar novas perguntas.";
-        onAuditComplete(auditId, { response: { error: message } }, "error");
-        toast.error(message);
+        const technicalDetails = extractTechnicalErrorDetails(error);
+
+        logFeatureAccess({
+          module: "consbot",
+          action: "suggestions_error",
+          label: "Sugestões de perguntas",
+          value: "refresh_suggestions",
+          chat_id: threadId,
+          meta: {
+            status: "error",
+            error: {
+              name: technicalDetails.name,
+              message: technicalDetails.message,
+              stack: technicalDetails.stack,
+              cause: technicalDetails.cause,
+              statusCode: technicalDetails.statusCode,
+              description: technicalDetails.description,
+            },
+            error_details: technicalDetails.description,
+            raw_error: technicalDetails.raw,
+            response: `[Erro da LLM nas sugestões: ${technicalDetails.message}]`,
+          },
+        });
+
+        onAuditComplete(
+          auditId,
+          {
+            error: technicalDetails,
+            response: {
+              error: technicalDetails.message,
+              technicalDetails,
+            },
+          },
+          "error",
+        );
+
+        showLlmUnavailableToast(isEnglish);
       } finally {
         setIsRefreshingSuggestions(false);
       }
     },
-    [isBusy, isRefreshingSuggestions, onAuditComplete, onAuditStart],
+    [isBusy, isEnglish, isRefreshingSuggestions, onAuditComplete, onAuditStart, threadId],
   );
 
   const initialSuggestionsRequestedRef = useRef(false);
