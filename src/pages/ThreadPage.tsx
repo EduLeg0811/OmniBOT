@@ -47,6 +47,50 @@ import {
 // Evita duas novas conversas causadas pela dupla inicialização do StrictMode em desenvolvimento.......
 let initialSessionThread: ChatThread | null = null;
 
+const ADMIN_STORAGE_KEY = "consbot_admin";
+
+function readInitialAdminState(): boolean {
+  if (typeof window !== "undefined") {
+    const hash = window.location.hash;
+    if (hash.includes("admin_auth=enable") || hash.includes("admin_activate=true")) {
+      try {
+        localStorage.setItem(ADMIN_STORAGE_KEY, "1");
+      } catch {}
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+      return true;
+    }
+    if (hash.includes("admin_auth=disable") || hash.includes("admin_deactivate=true")) {
+      try {
+        localStorage.removeItem(ADMIN_STORAGE_KEY);
+      } catch {}
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+      return false;
+    }
+
+    try {
+      if (localStorage.getItem(ADMIN_STORAGE_KEY) === "1") return true;
+    } catch {}
+  }
+
+  if (import.meta.env.DEV) return true;
+
+  const isLocalhost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "[::1]");
+  const buildFlag = String(import.meta.env.VITE_ACCESS_LEVEL || "").trim() === "1";
+  return isLocalhost || buildFlag;
+}
+
 export function ThreadPage() {
   const [containerWidth, setContainerWidth] = useState<ContainerWidth>("full");
   const { isDark, toggleTheme } = useAppTheme();
@@ -70,33 +114,55 @@ export function ThreadPage() {
   const [citationsPanelOpen, setCitationsPanelOpen] = useState(false);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  // Feature-gating de UI, não uma fronteira de segurança: o admin mode antes
-  // era um pedido a uma rota serverless própria (ACCESS_LEVEL no ambiente do
-  // Vercel), que só ocultava/mostrava controles — o corpo da requisição
-  // sempre foi de livre escolha do cliente, com ou sem essa checagem. Sem
-  // backend próprio, isAdmin fica inteiramente no cliente: o dev server, ou
-  // localhost, ou VITE_ACCESS_LEVEL=1 definido no build para uma implantação
-  // de teste.
-  const [accessLevel] = useState<0 | 1>(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("admin") === "0" || params.get("user") === "1") return 0;
-      if (params.get("admin") === "1") return 1;
-    }
+  const [isAdmin, setIsAdmin] = useState<boolean>(readInitialAdminState);
 
-    // `npm run dev` é sempre admin. A checagem de hostname abaixo não cobre o
-    // dev aberto pelo IP da LAN (celular na rede); `import.meta.env.DEV` cobre,
-    // e continua falso em qualquer build de produção.
-    if (import.meta.env.DEV) return 1;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-    const isLocalhost =
-      typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.hostname === "[::1]");
-    const buildFlag = String(import.meta.env.VITE_ACCESS_LEVEL || "").trim() === "1";
-    return isLocalhost || buildFlag ? 1 : 0;
-  });
+    const checkHash = () => {
+      const currentHash = window.location.hash;
+      if (
+        currentHash.includes("admin_auth=enable") ||
+        currentHash.includes("admin_activate=true")
+      ) {
+        try {
+          localStorage.setItem(ADMIN_STORAGE_KEY, "1");
+        } catch {}
+        setIsAdmin(true);
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + window.location.search,
+        );
+        toast.success("Modo Administrador ativado neste navegador!");
+      } else if (
+        currentHash.includes("admin_auth=disable") ||
+        currentHash.includes("admin_deactivate=true")
+      ) {
+        try {
+          localStorage.removeItem(ADMIN_STORAGE_KEY);
+        } catch {}
+        setIsAdmin(false);
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + window.location.search,
+        );
+        toast.info("Modo Administrador desativado.");
+      }
+    };
+
+    window.addEventListener("hashchange", checkHash);
+    return () => window.removeEventListener("hashchange", checkHash);
+  }, []);
+
+  const handleLogoutAdmin = useCallback(() => {
+    try {
+      localStorage.removeItem(ADMIN_STORAGE_KEY);
+    } catch {}
+    setIsAdmin(false);
+    toast.info("Você saiu do modo Administrador.");
+  }, []);
 
   useEffect(() => {
     setAuditLogs(loadAuditLogs(activeId));
@@ -108,7 +174,6 @@ export function ThreadPage() {
   }, []);
 
   const active = threads.find((thread) => thread.id === activeId) ?? null;
-  const isAdmin = accessLevel === 1;
   const effectiveSettings = active
     ? isAdmin
       ? active.settings
@@ -375,6 +440,7 @@ export function ThreadPage() {
     onCitationsPanelOpenChange: setCitationsPanelOpen,
     activeTab: sidebarTab,
     onTabChange: setSidebarTab,
+    onLogoutAdmin: handleLogoutAdmin,
   };
   const currentContainerWidth = CONTAINER_WIDTH_CONFIG[containerWidth];
 

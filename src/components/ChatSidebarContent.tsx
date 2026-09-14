@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileText,
   Library,
+  LogOut,
   MessageSquare,
   PanelRightOpen,
   Pencil,
@@ -52,6 +53,7 @@ export type ChatSidebarProps = {
   onCitationsPanelOpenChange: (open: boolean) => void;
   activeTab?: SidebarTab;
   onTabChange?: (tab: SidebarTab) => void;
+  onLogoutAdmin?: () => void;
 };
 
 export const SIDEBAR_QUICK_LINKS = [
@@ -121,6 +123,7 @@ export function ChatSidebarContent({
   onCitationsPanelOpenChange,
   activeTab,
   onTabChange,
+  onLogoutAdmin,
 }: ChatSidebarProps) {
   const [internalTab, setInternalTab] = useState<SidebarTab>("chats");
   const tab = activeTab ?? internalTab;
@@ -326,14 +329,28 @@ export function ChatSidebarContent({
               </p>
               <p className="mt-1 text-xs text-muted-foreground">Conversa atual</p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Restaurar padrão"
-              onClick={() => onSettingsChange(DEFAULT_SETTINGS)}
-            >
-              <RotateCcw />
-            </Button>
+            <div className="flex items-center gap-1">
+              {isAdmin && onLogoutAdmin ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  title="Sair do modo Administrador neste navegador"
+                  onClick={onLogoutAdmin}
+                >
+                  <LogOut className="size-3.5" />
+                  <span>Sair Admin</span>
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Restaurar padrão"
+                onClick={() => onSettingsChange(DEFAULT_SETTINGS)}
+              >
+                <RotateCcw />
+              </Button>
+            </div>
           </div>
           <SettingsFields value={settings} onChange={onSettingsChange} isAdmin={isAdmin} />
         </div>
