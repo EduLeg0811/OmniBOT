@@ -32,6 +32,7 @@ import {
   VECTOR_STORES,
   type ChatSettings,
 } from "@/lib/chat-settings";
+import { MAX_CONTEXT_RECENT_TURNS, trimMessagesForContext } from "@/lib/chat-store";
 import { API_BASE } from "@/lib/main-server";
 import { logFeatureAccess } from "@/lib/access-log";
 import { extractTechnicalErrorDetails, showLlmUnavailableToast } from "@/lib/error-capture";
@@ -614,12 +615,13 @@ export function ChatWindow({
         api: `${API_BASE}/api/llm`,
         prepareSendMessagesRequest: async ({ messages }) => {
           const vectorStores = vectorStoresFor(settingsRef.current.vectorStoreId);
+          const trimmed = trimMessagesForContext(messages, MAX_CONTEXT_RECENT_TURNS);
           return {
             body: {
               // Main-Server takes plain role/content messages, not UIMessage[]
               // — the same conversion the removed /api/chat function used to
               // do server-side, now run here before the request leaves the browser.
-              messages: await convertToModelMessages(messages),
+              messages: await convertToModelMessages(trimmed),
               model: settingsRef.current.model,
               systemPrompt: [
                 buildSystemPrompt(settingsRef.current),
@@ -1356,11 +1358,15 @@ export function ChatWindow({
         const systemPrompt = [buildSystemPrompt(current), agentResponseContext]
           .filter(Boolean)
           .join("\n\n");
+        const outgoingMessages = trimMessagesForContext(
+          [...messages, { role: "user", parts: [{ type: "text", text: value }] }],
+          MAX_CONTEXT_RECENT_TURNS,
+        );
         pendingAuditId.current = onAuditStart({
           endpoint: `${API_BASE}/api/llm`,
           sentAt: new Date().toISOString(),
           body: {
-            messages: [...messages, { role: "user", parts: [{ type: "text", text: value }] }],
+            messages: outgoingMessages,
             model: current.model,
             vectorStores: vectorStoresFor(current.vectorStoreId),
             systemPrompt,

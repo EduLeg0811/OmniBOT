@@ -35,6 +35,7 @@ import { logFeatureAccess } from "@/lib/access-log";
 import { API_BASE } from "@/lib/main-server";
 import type { AgentHost } from "@/agent";
 import {
+  MAX_STORED_THREADS,
   createThread,
   deleteThread,
   loadThreads,
@@ -99,13 +100,13 @@ export function ThreadPage() {
     const existingEmpty = loaded.find((t) => t.messages.length === 0);
     if (existingEmpty) {
       const otherThreads = loaded.filter((t) => t.id !== existingEmpty.id);
-      const next = [existingEmpty, ...otherThreads];
+      const next = [existingEmpty, ...otherThreads].slice(0, MAX_STORED_THREADS);
       saveThreads(next);
       return next;
     }
     const thread = initialSessionThread ?? createThread();
     initialSessionThread = thread;
-    const next = [thread, ...loaded];
+    const next = [thread, ...loaded].slice(0, MAX_STORED_THREADS);
     saveThreads(next);
     return next;
   });

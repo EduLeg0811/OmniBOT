@@ -40,6 +40,77 @@ function normalize(raw: unknown): ChatThread | null {
   };
 }
 
+export const MAX_STORED_THREADS = 20;
+export const MAX_CONTEXT_RECENT_TURNS = 5;
+
+/**
+ * Poda o histórico de mensagens para envio ao modelo LLM usando a estratégia
+ * "Âncora + Últimos N turnos" (por padrão, 5 turnos).
+ *
+ * Mantém:
+ * 1. O primeiro turno (primeira pergunta do usuário e respectiva resposta do assistente,
+ *    que ancora o assunto/contexto inicial da conversa).
+ * 2. Os últimos `maxRecentTurns` turnos (perguntas e respostas mais recentes,
+ *    incluindo a pergunta atual sendo despachada).
+ *
+ * O miolo intermediário é omitido para economia de tokens e foco da LLM,
+ * preservando a ordem cronológica e a alternância entre usuário e assistente.
+ */
+export function trimMessagesForContext<T extends { role: string }>(
+  messages: T[],
+  maxRecentTurns = MAX_CONTEXT_RECENT_TURNS,
+): T[] {
+  if (!messages || messages.length === 0) return [];
+  if (maxRecentTurns <= 0) return messages;
+
+  const userIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const item = messages[i];
+    if (item && item.role === "user") {
+      userIndices.push(i);
+    }
+  }
+
+  // Se o total de perguntas for menor ou igual aos turnos recentes solicitados,
+  // devolve o histórico completo sem poda.
+  if (userIndices.length <= maxRecentTurns) {
+    return messages;
+  }
+
+  // Ponto de corte dos turnos mais recentes (os últimos `maxRecentTurns` turnos)
+  const recentStartIndex = userIndices[userIndices.length - maxRecentTurns];
+  if (recentStartIndex === undefined) {
+    return messages;
+  }
+
+  const recentMessages = messages.slice(recentStartIndex);
+
+  // Âncora: primeiro turno (primeira mensagem de usuário e respectiva resposta, se houver)
+  const firstUserIndex = userIndices[0];
+  if (firstUserIndex === undefined) {
+    return messages;
+  }
+
+  const firstUserMessage = messages[firstUserIndex];
+  if (!firstUserMessage) {
+    return messages;
+  }
+
+  const leadingMessages = messages.slice(0, firstUserIndex);
+  const anchorMessages: T[] = [...leadingMessages, firstUserMessage];
+
+  const candidateAssistant = messages[firstUserIndex + 1];
+  if (
+    firstUserIndex + 1 < recentStartIndex &&
+    candidateAssistant &&
+    candidateAssistant.role === "assistant"
+  ) {
+    anchorMessages.push(candidateAssistant);
+  }
+
+  return [...anchorMessages, ...recentMessages];
+}
+
 export function loadThreads(): ChatThread[] {
   if (!isBrowser()) return [];
   try {
@@ -50,7 +121,8 @@ export function loadThreads(): ChatThread[] {
     return parsed
       .map(normalize)
       .filter((t): t is ChatThread => t !== null)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_STORED_THREADS);
   } catch {
     return [];
   }
@@ -62,8 +134,24 @@ export function saveThreads(threads: ChatThread[]) {
   // a sessão em curso. Gravá-los e depois ignorá-los na leitura daria no
   // mesmo, mas deixaria no localStorage um estado que nada relê — e que
   // pareceria autoritativo para quem fosse inspecioná-lo depois.
-  const persistable = threads.map(({ settings: _settings, ...thread }) => thread);
-  window.localStorage.setItem(THREADS_KEY, JSON.stringify(persistable));
+  const sorted = [...threads].sort((a, b) => b.updatedAt - a.updatedAt);
+  let count = Math.min(sorted.length, MAX_STORED_THREADS);
+
+  while (count > 0) {
+    try {
+      const persistable = sorted
+        .slice(0, count)
+        .map(({ settings: _settings, ...thread }) => thread);
+      window.localStorage.setItem(THREADS_KEY, JSON.stringify(persistable));
+      return;
+    } catch (error) {
+      // Se estourar a cota (QuotaExceededError), reduz gradualmente o número de conversas mantidas
+      count = Math.floor(count / 2);
+      if (count === 0) {
+        console.warn("Falha ao persistir conversas no localStorage:", error);
+      }
+    }
+  }
 }
 
 export function createThread(initialSettings?: ChatSettings): ChatThread {
@@ -91,7 +179,7 @@ export function ensureThread(
   const thread = requestedId
     ? { ...createThread(initialSettings), id: requestedId }
     : createThread(initialSettings);
-  const next = [thread, ...threads];
+  const next = [thread, ...threads].slice(0, MAX_STORED_THREADS);
   saveThreads(next);
   return { threads: next, activeId: thread.id };
 }
@@ -101,7 +189,7 @@ export function upsertThread(threads: ChatThread[], thread: ChatThread): ChatThr
   const next = exists
     ? threads.map((t) => (t.id === thread.id ? thread : t))
     : [thread, ...threads];
-  return next.sort((a, b) => b.updatedAt - a.updatedAt);
+  return next.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_STORED_THREADS);
 }
 
 export function deleteThread(threads: ChatThread[], id: string): ChatThread[] {
