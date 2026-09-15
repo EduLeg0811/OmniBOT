@@ -1,4 +1,7 @@
 import { AGENT_SETTINGS_DEFAULT, normalizeAgentSettings, type AgentSettings } from "@/agent";
+import { buildCaveatsInstruction, SYSTEM_CAVEATS, type SystemCaveat } from "./prompt-caveats";
+
+export { SYSTEM_CAVEATS, buildCaveatsInstruction, type SystemCaveat };
 
 export const ASTRA_MODEL_ID = "gpt-6-astra" as const;
 
@@ -449,12 +452,14 @@ export function settingsForPublicUser(settings: ChatSettings): ChatSettings {
 }
 
 export function buildSystemPrompt(settings: ChatSettings): string {
+  const caveatsInstruction = buildCaveatsInstruction();
   const modules = [
     COMMON_SYSTEM_CORE,
+    caveatsInstruction,
     FORMAT_INSTRUCTIONS[settings.responseFormat],
     PROFILE_INSTRUCTIONS[settings.profile],
     depthInstruction(settings.responseDepth, targetWordsForSettings(settings)),
-  ];
+  ].filter(Boolean);
 
   if (settings.vectorStoreId !== "none") modules.push(RAG_CONTEXT_CONTRACT);
   if (isEnglishVectorStore(settings.vectorStoreId)) modules.push(ENGLISH_STORE_INSTRUCTION);

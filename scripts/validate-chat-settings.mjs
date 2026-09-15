@@ -3,9 +3,13 @@ import ts from "typescript";
 
 const path = new URL("../src/lib/chat-settings.ts", import.meta.url);
 const rawSource = await readFile(path, "utf8");
-const source = rawSource.replace(
-  /^import \{ AGENT_SETTINGS_DEFAULT, normalizeAgentSettings, type AgentSettings \} from "@\/agent";$/m,
-  `const AGENT_SETTINGS_DEFAULT = {
+const caveatPath = new URL("../src/lib/prompt-caveats.ts", import.meta.url);
+const rawCaveatSource = await readFile(caveatPath, "utf8");
+
+const source = rawSource
+  .replace(
+    /^import \{ AGENT_SETTINGS_DEFAULT, normalizeAgentSettings, type AgentSettings \} from "@\/agent";$/m,
+    `const AGENT_SETTINGS_DEFAULT = {
     enabled: false,
     prompt: "",
     presentation: "classic",
@@ -20,7 +24,11 @@ const source = rawSource.replace(
         ? value.followUpSuggestions
         : AGENT_SETTINGS_DEFAULT.followUpSuggestions,
   });`,
-);
+  )
+  .replace(
+    /^import \{ buildCaveatsInstruction, SYSTEM_CAVEATS, type SystemCaveat \} from "\.\/prompt-caveats";$/m,
+    rawCaveatSource.replace(/export /g, ""),
+  );
 
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },

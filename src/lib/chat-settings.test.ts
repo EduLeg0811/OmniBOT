@@ -5,6 +5,8 @@ import {
   CONSCIENTIOLOGICAL_WORD_OFFSET,
   DEFAULT_SETTINGS,
   MODELS,
+  SYSTEM_CAVEATS,
+  buildCaveatsInstruction,
   buildSystemPrompt,
   modelsFor,
   normalizeReasoningEffortForModel,
@@ -13,6 +15,7 @@ import {
   settingsForPublicUser,
   targetWordsForSettings,
   withProfile,
+  type SystemCaveat,
 } from "@/lib/chat-settings";
 
 describe("chat settings", () => {
@@ -140,5 +143,41 @@ describe("chat settings", () => {
 
     const prompt = buildSystemPrompt(consSettings);
     expect(prompt).toContain("cerca de 500 palavras");
+  });
+
+  it("injeta as diretrizes e ressalvas cosmoéticas no system prompt", () => {
+    const prompt = buildSystemPrompt(DEFAULT_SETTINGS);
+    expect(prompt).toContain("## Diretrizes Especiais e Ressalvas Cosmoéticas");
+    expect(prompt).toContain("Redação de Verbetes, Artigos e Seções da Enciclopédia");
+    expect(prompt).toContain(
+      "No papel de ferramenta cosmoética da Tares, minha sugestão é que use a IA para qualificar abordagens, debater assuntos ou até mesmo sugerir temas de pesquisa - mas, ao final, escreva sempre suas ideias com suas próprias palavras, a fim de desenvolver o mentalsoma pessoal.",
+    );
+  });
+
+  it("permite compilar ressalvas customizadas e respeita flag de ativação", () => {
+    const caveats: SystemCaveat[] = [
+      {
+        id: "caso-ativo",
+        titulo: "Caso Ativo",
+        descricao: "Descrição",
+        gatilho: "Quando X ocorrer",
+        diretriz: "Faça Y",
+        ativo: true,
+      },
+      {
+        id: "caso-inativo",
+        titulo: "Caso Inativo",
+        descricao: "Descrição",
+        gatilho: "Quando Z ocorrer",
+        diretriz: "Faça W",
+        ativo: false,
+      },
+    ];
+    const instruction = buildCaveatsInstruction(caveats);
+    expect(instruction).toContain("Caso Ativo");
+    expect(instruction).not.toContain("Caso Inativo");
+
+    expect(buildCaveatsInstruction([])).toBe("");
+    expect(buildCaveatsInstruction([{ ...caveats[0]!, ativo: false }])).toBe("");
   });
 });
