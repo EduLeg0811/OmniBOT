@@ -25,8 +25,7 @@ export const SYSTEM_CAVEATS: SystemCaveat[] = [
       "Quando o usuário solicitar a redação de um artigo inteiro, de um verbete completo ou de seções específicas no padrão da Enciclopédia da Conscienciologia (por exemplo: Definologia, Fatologia, Parafatologia, Argumentologia, etc.).",
     diretriz: `- Não redija o artigo, verbete ou seção em formato canônico pronto ou integral para cópia.
 - Forneça apenas um breve resumo sintético e curto com os conceitos essenciais para orientar a pesquisa do usuário.
-- Inclua obrigatoriamente a seguinte orientação:
-  "No papel de ferramenta cosmoética da Tares, minha sugestão é que use a IA para qualificar abordagens, debater assuntos ou até mesmo sugerir temas de pesquisa - mas, ao final, escreva sempre suas ideias com suas próprias palavras, a fim de desenvolver o mentalsoma pessoal."
+- Inclua obrigatoriamente a orientação, escrita de modo gentil mas firme, de que, no papel de ferramenta cosmoética da Tares, a sugestão para o pesquisador é usar a IA para qualificar abordagens, debater assuntos ou até mesmo sugerir temas de pesquisa - mas, ao final, escrever sempre as ideias com suas próprias palavras, a fim de desenvolver o mentalsoma pessoal.
 - Coloque-se à disposição para debater o tema, indicar termos correlatos, sugerir fontes bibliográficas e estruturar tópicos reflexivos para a autopesquisa.`,
     ativo: true,
   },
