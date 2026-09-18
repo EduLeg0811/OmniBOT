@@ -219,13 +219,23 @@ export function SearchResults({
   response,
   view,
   onViewChange,
+  highlightEnabled: externalHighlightEnabled,
+  onHighlightEnabledChange,
 }: {
   response: CorpusSearchResponse;
   view: ResultsView;
   onViewChange: (view: ResultsView) => void;
+  highlightEnabled?: boolean;
+  onHighlightEnabledChange?: (enabled: boolean) => void;
 }) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
-  const [highlightEnabled, setHighlightEnabled] = useState(true);
+  const [internalHighlightEnabled, setInternalHighlightEnabled] = useState(true);
+  const highlightEnabled = externalHighlightEnabled ?? internalHighlightEnabled;
+  const setHighlightEnabled = (value: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof value === "function" ? value(highlightEnabled) : value;
+    setInternalHighlightEnabled(next);
+    onHighlightEnabledChange?.(next);
+  };
   useEffect(() => {
     setOpenGroups(new Set(response.groups[0] ? [response.groups[0].sourceId] : []));
   }, [response]);

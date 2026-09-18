@@ -50,6 +50,7 @@ export async function searchCorpus({
   sourceIds,
   limit,
   catalog,
+  miniTextWindow,
   signal,
 }: {
   query: string;
@@ -57,6 +58,7 @@ export async function searchCorpus({
   sourceIds: string[];
   limit: number;
   catalog: CorpusSource[];
+  miniTextWindow?: number;
   signal?: AbortSignal;
 }): Promise<CorpusSearchResponse> {
   const startedAt = performance.now();
@@ -73,8 +75,19 @@ export async function searchCorpus({
       },
       body: JSON.stringify(
         kind === "smart"
-          ? { query, sourceIds, limit, semanticOnly: true }
-          : { term: query, sourceIds, limit },
+          ? {
+              query,
+              sourceIds,
+              limit,
+              semanticOnly: true,
+              ...(typeof miniTextWindow === "number" ? { miniTextWindow } : {}),
+            }
+          : {
+              term: query,
+              sourceIds,
+              limit,
+              ...(typeof miniTextWindow === "number" ? { miniTextWindow } : {}),
+            },
       ),
     },
   );

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, LibraryBig, LoaderCircle, PanelLeft, Search, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  LibraryBig,
+  LoaderCircle,
+  PanelLeft,
+  Search,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
 import {
@@ -18,11 +26,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CorpusSearchError, fetchCorpusSources, searchCorpus } from "@/features/consteca/api";
 import {
   SearchKindControl,
   SourceFilterPanel,
 } from "@/features/consteca/components/SearchControls";
+import { SearchSettingsPanel } from "@/features/consteca/components/SearchSettingsPanel";
 import { ResultsSkeleton, SearchResults } from "@/features/consteca/components/SearchResults";
 import type {
   CorpusSearchResponse,
@@ -43,6 +53,9 @@ const DEFAULT_PREFERENCES: SearchPreferences = {
   view: "grouped",
   smartLimit: 20,
   literalLimit: 10,
+  miniTextWindow: 3,
+  highlightEnabled: true,
+  minScore: null,
 };
 
 function loadPreferences(): SearchPreferences {
@@ -65,6 +78,15 @@ function loadPreferences(): SearchPreferences {
         100,
         Math.max(1, Number(parsed.literalLimit) || DEFAULT_PREFERENCES.literalLimit),
       ),
+      miniTextWindow: Math.min(
+        8,
+        Math.max(1, Number(parsed.miniTextWindow) || (DEFAULT_PREFERENCES.miniTextWindow ?? 3)),
+      ),
+      highlightEnabled:
+        typeof parsed.highlightEnabled === "boolean"
+          ? parsed.highlightEnabled
+          : (DEFAULT_PREFERENCES.highlightEnabled ?? true),
+      minScore: typeof parsed.minScore === "number" ? parsed.minScore : null,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES, sourceIds: [...DEFAULT_PREFERENCES.sourceIds] };
@@ -94,6 +116,7 @@ function sourceIdsFromParams(value: string | null, fallback: string[]) {
 export function ConsTecaPage() {
   const { isDark, toggleTheme } = useAppTheme();
   const [containerWidth, setContainerWidth] = useState<ContainerWidth>("full");
+  const [sidebarTab, setSidebarTab] = useState<"sources" | "settings">("sources");
   const [searchParams, setSearchParams] = useSearchParams();
   const initialPreferences = useMemo(loadPreferences, []);
   const [query, setQuery] = useState(() => searchParams.get("q") || "");
@@ -108,6 +131,15 @@ export function ConsTecaPage() {
   );
   const [smartLimit, setSmartLimit] = useState(initialPreferences.smartLimit);
   const [literalLimit, setLiteralLimit] = useState(initialPreferences.literalLimit);
+  const [miniTextWindow, setMiniTextWindow] = useState(
+    initialPreferences.miniTextWindow ?? DEFAULT_PREFERENCES.miniTextWindow ?? 3,
+  );
+  const [highlightEnabled, setHighlightEnabled] = useState(
+    initialPreferences.highlightEnabled ?? DEFAULT_PREFERENCES.highlightEnabled ?? true,
+  );
+  const [minScore, setMinScore] = useState<number | null>(
+    initialPreferences.minScore ?? null,
+  );
   const [sources, setSources] = useState<CorpusSource[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
@@ -119,6 +151,8 @@ export function ConsTecaPage() {
   const lastRequestKeyRef = useRef("");
   const limitsRef = useRef({ smart: smartLimit, literal: literalLimit });
   limitsRef.current = { smart: smartLimit, literal: literalLimit };
+  const windowRef = useRef(miniTextWindow);
+  windowRef.current = miniTextWindow;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -168,6 +202,7 @@ export function ConsTecaPage() {
           sourceIds: availableIds,
           limit,
           catalog: sources,
+          miniTextWindow: windowRef.current,
           signal: controller.signal,
         });
         if (sequence !== requestSequenceRef.current) return;
@@ -232,6 +267,9 @@ export function ConsTecaPage() {
       view,
       smartLimit,
       literalLimit,
+      miniTextWindow,
+      highlightEnabled,
+      minScore,
       ...overrides,
     };
     try {
@@ -239,6 +277,27 @@ export function ConsTecaPage() {
     } catch {
       // URL still preserves the active search when storage is unavailable.
     }
+  };
+
+  const resetDefaults = () => {
+    setKind(DEFAULT_PREFERENCES.kind);
+    setView(DEFAULT_PREFERENCES.view);
+    setSelectedSources([...DEFAULT_PREFERENCES.sourceIds]);
+    setSmartLimit(DEFAULT_PREFERENCES.smartLimit);
+    setLiteralLimit(DEFAULT_PREFERENCES.literalLimit);
+    setMiniTextWindow(DEFAULT_PREFERENCES.miniTextWindow ?? 3);
+    setHighlightEnabled(DEFAULT_PREFERENCES.highlightEnabled ?? true);
+    setMinScore(DEFAULT_PREFERENCES.minScore ?? null);
+    savePreferences({
+      kind: DEFAULT_PREFERENCES.kind,
+      view: DEFAULT_PREFERENCES.view,
+      sourceIds: [...DEFAULT_PREFERENCES.sourceIds],
+      smartLimit: DEFAULT_PREFERENCES.smartLimit,
+      literalLimit: DEFAULT_PREFERENCES.literalLimit,
+      miniTextWindow: DEFAULT_PREFERENCES.miniTextWindow ?? 3,
+      highlightEnabled: DEFAULT_PREFERENCES.highlightEnabled ?? true,
+      minScore: DEFAULT_PREFERENCES.minScore ?? null,
+    });
   };
 
   const submit = () => {
@@ -318,24 +377,113 @@ export function ConsTecaPage() {
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-        <section className="shrink-0 space-y-2 border-b border-sidebar-border pb-4">
-          <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Modo de Busca
-          </h2>
-          <SearchKindControl onChange={changeKind} value={kind} />
-        </section>
-        <div className="min-h-0 flex-1">
-          {sourcesLoading ? (
-            <div className="flex items-center gap-2 py-8 text-xs text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" /> Carregando acervo...
-            </div>
-          ) : sourcesError ? (
-            <p className="py-4 text-xs leading-relaxed text-destructive">{sourcesError}</p>
-          ) : (
-            filterPanel(idPrefix)
-          )}
+      <TooltipProvider delayDuration={250}>
+        <div
+          className="mt-3 mb-1 flex gap-1 px-3 py-1"
+          role="tablist"
+          aria-label="Navegação do ConsTECA"
+        >
+          {[
+            {
+              id: "sources" as const,
+              label: "Acervo",
+              icon: LibraryBig,
+              description: "Selecione as fontes e livros pesquisados.",
+            },
+            {
+              id: "settings" as const,
+              label: "Configurações",
+              icon: Settings2,
+              description: "Parâmetros de precisão, limites e apresentação.",
+            },
+          ].map(({ id, label, icon: Icon, description }) => {
+            const selected = sidebarTab === id;
+            return (
+              <Tooltip key={id}>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    role="tab"
+                    aria-selected={selected}
+                    className={cn(
+                      "flex-1 gap-2 rounded-full border border-transparent transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      selected &&
+                        "font-bold text-emerald-600 dark:text-emerald-300 hover:bg-sidebar-accent hover:text-emerald-700 dark:hover:text-emerald-200",
+                    )}
+                    onClick={() => setSidebarTab(id)}
+                  >
+                    <Icon className="size-4" />
+                    <span className="text-xs">{label}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-52 bg-popover text-center text-[11px] leading-snug text-popover-foreground">
+                  {description}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
         </div>
+      </TooltipProvider>
+
+      <div className="flex min-h-0 flex-1 flex-col p-4 pt-2">
+        {sidebarTab === "sources" ? (
+          <>
+            <section className="shrink-0 space-y-2 border-b border-sidebar-border pb-4 mb-4">
+              <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Modo de Busca
+              </h2>
+              <SearchKindControl onChange={changeKind} value={kind} />
+            </section>
+            <div className="min-h-0 flex-1">
+              {sourcesLoading ? (
+                <div className="flex items-center gap-2 py-8 text-xs text-muted-foreground">
+                  <LoaderCircle className="size-4 animate-spin" /> Carregando acervo...
+                </div>
+              ) : sourcesError ? (
+                <p className="py-4 text-xs leading-relaxed text-destructive">{sourcesError}</p>
+              ) : (
+                filterPanel(idPrefix)
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="min-h-0 flex-1">
+            <SearchSettingsPanel
+              idPrefix={idPrefix}
+              kind={kind}
+              onKindChange={changeKind}
+              view={view}
+              onViewChange={changeView}
+              literalLimit={literalLimit}
+              onLiteralLimitChange={(val) => {
+                setLiteralLimit(val);
+                savePreferences({ literalLimit: val });
+              }}
+              smartLimit={smartLimit}
+              onSmartLimitChange={(val) => {
+                setSmartLimit(val);
+                savePreferences({ smartLimit: val });
+              }}
+              miniTextWindow={miniTextWindow}
+              onMiniTextWindowChange={(val) => {
+                setMiniTextWindow(val);
+                savePreferences({ miniTextWindow: val });
+              }}
+              highlightEnabled={highlightEnabled}
+              onHighlightEnabledChange={(val) => {
+                setHighlightEnabled(val);
+                savePreferences({ highlightEnabled: val });
+              }}
+              minScore={minScore}
+              onMinScoreChange={(val) => {
+                setMinScore(val);
+                savePreferences({ minScore: val });
+              }}
+              onResetDefaults={resetDefaults}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -458,7 +606,16 @@ export function ConsTecaPage() {
                 ) : null}
 
                 {status === "done" && response ? (
-                  <SearchResults onViewChange={changeView} response={response} view={view} />
+                  <SearchResults
+                    onViewChange={changeView}
+                    response={response}
+                    view={view}
+                    highlightEnabled={highlightEnabled}
+                    onHighlightEnabledChange={(val) => {
+                      setHighlightEnabled(val);
+                      savePreferences({ highlightEnabled: val });
+                    }}
+                  />
                 ) : null}
               </div>
             </section>

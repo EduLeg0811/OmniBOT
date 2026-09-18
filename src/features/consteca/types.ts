@@ -65,4 +65,7 @@ export type SearchPreferences = {
   view: ResultsView;
   smartLimit: number;
   literalLimit: number;
+  miniTextWindow?: number;
+  highlightEnabled?: boolean;
+  minScore?: number | null;
 };
