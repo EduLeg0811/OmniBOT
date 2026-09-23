@@ -517,8 +517,7 @@ export function agentBookByName(value: string | undefined) {
 export const RESOURCE_TARGETS: Record<(typeof AGENT_RESOURCE_IDS)[number], string> = {
   periodicos: "https://periodicos.conscienciologia.org.br/",
   enciclopedia: "https://enciclopediadaconscienciologia.org/",
-  livros_pdf:
-    "https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj?usp=sharing",
+  livros_pdf: "https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
   quiz: "https://notebooklm.link.google/nEesZnRp21eu",
   flashcards: "https://notebooklm.link.google/OdYcHoLNuP1P",
   consgpt: "https://chatgpt.com/g/g-68a5d68b96c4819189dd1e6fb0def83f-consgpt",

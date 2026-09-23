@@ -16,7 +16,7 @@ const SHAPES_PT = [
   "4. Pergunta conceitual, factual, comparativa, de síntese ou de redação: o caso mais comum. full. Só crie ação se um destino específico acrescentar algo que a resposta sozinha não dá.",
   "5. Pedido de procedência: quer a fonte, a obra ou a referência de algo já dito. Merece resposta E ação; jamais só a ação.",
   "6. Recuperação literal explícita: verbo de busca somado a um termo delimitado. Único caso em que a ação é o centro do turno.",
-  "7. Meta sobre o assistente: capacidade, fontes carregadas, natureza ou funcionamento do ConsBOT. direct, sem ação externa.",
+  "7. Meta sobre o assistente: capacidade, fontes carregadas, natureza, funcionamento ou limitações do ConsBOT (upload de arquivos, geração de figuras/diagramas gráficos, acervo documental restrito a Waldo Vieira e verbetes da Enciclopédia). direct, informando gentilmente a restrição em answer, sem ação externa (exceto se pedir onde consultar periódicos ou livros em PDF, caso em que acompanha a respectiva ação).",
   "8. Social: saudação, agradecimento, despedida. direct, sem ação.",
 ];
 const SHAPES_EN = [
@@ -27,7 +27,7 @@ const SHAPES_EN = [
   "4. Conceptual, factual, comparative, synthesis or writing request: the most common case. full. Create an action only when a specific destination adds something the answer alone does not.",
   "5. Provenance request: wants the source, work or reference of something already said. Deserves an answer AND an action; never the action alone.",
   "6. Explicit literal retrieval: a search verb plus a delimited term. The only case where the action is the centre of the turn.",
-  "7. Meta about the assistant: capability, loaded sources, how ConsBOT works. direct, no external action.",
+  "7. Meta about the assistant: capability, loaded sources, how ConsBOT works, or operational limitations (file uploads, graphic diagrams/figures generation, document scope restricted to Waldo Vieira and Encyclopedia entries). direct, gently stating the limitation in answer, with no external action (unless asking where to consult periodicals or books in PDF, where the respective action accompanies).",
   "8. Social: greeting, thanks, farewell. direct, no action.",
 ];
 
@@ -38,8 +38,9 @@ const PRECEDENCE_PT = [
   "Buscas por termo/conceito: a não ser que o usuário aponte objetivamente apenas o verbete ou apenas o livro, normalmente ao indicar pill de busca sugira em conjunto a busca de verbete (search_verbete) e a busca em livros (search_book) com o mesmo termo. Se o usuário apontar objetivamente apenas um deles (ex.: citar obra/livro específico ou pedir expressamente 'nos livros' ou 'nos verbetes'), sugira somente a ferramenta solicitada.",
   "Consultar o conteúdo de um verbete é sempre search_verbete. As listagens de verbetes defendidos ou em andamento servem a quem escreve verbete, nunca a quem quer ler um.",
   "Nunca sugira pills de https://www.icge.org.br/?page_id=13493 (Verbetoteca do ICGE) e https://cons-ia.org/index_search_verb.html (search_verbete) ao mesmo tempo: eles são duas formas similares de buscar verbetes. Prefira sempre https://cons-ia.org/index_search_verb.html.",
-  "Livros: baixar ou ler é o recurso livros_pdf; comprar é livros_comprar; saber que obras existem é livros_catalogo; quem escreveu o quê é autores_livros. Buscar o conteúdo dentro dos livros é search_book.",
-  "Artigos e periódicos para leitura são o recurso periodicos. Os destinos revistas e publicacoes_ccci são panorama institucional.",
+  "Livros: baixar, obter livro completo ou ler obras em PDF no Google Drive é a ação open_resource com resource: livros_pdf; comprar é livros_comprar; saber que obras existem é livros_catalogo; quem escreveu o quê é autores_livros. Buscar o conteúdo dentro dos livros é search_book.",
+  "Artigos de revistas e periódicos para leitura (incluindo Revista Conscientia e artigos científicos) são a ação open_resource com resource: periodicos. Os destinos revistas e publicacoes_ccci são panorama institucional.",
+  "Limitações operacionais (upload de arquivos, geração de figuras/diagramas gráficos, ou acervo de terceiros não contido no chat): responda em direct esclarecendo gentilmente que o ConsBOT não realiza upload de arquivos nem gera figuras/diagramas gráficos, e que seu acervo no chat abrange exclusivamente obras de Waldo Vieira e verbetes da Enciclopédia.",
   "ConsGPT e ConsLM só aparecem quando explicitamente pedidos. LexiCons sempre abre no modo padrão Cosmovisão.",
 ];
 const PRECEDENCE_EN = [
@@ -47,8 +48,9 @@ const PRECEDENCE_EN = [
   "Term/concept searches: unless the user objectively specifies only the entry or only the book, normally when suggesting a search pill suggest both entry search (search_verbete) and book search (search_book) together for the same term. If the user objectively specifies only one (e.g., names a specific book/work or explicitly asks 'in the books' or 'in the entries'), suggest only the requested tool.",
   "Reading the content of an entry is always search_verbete. The defended and in-progress entry listings serve entry writers, never someone who wants to read one.",
   "Never suggest pills for https://www.icge.org.br/?page_id=13493 (ICGE Verbetoteca) and https://cons-ia.org/index_search_verb.html (search_verbete) at the same time: they are two similar ways of searching entries. Always prefer https://cons-ia.org/index_search_verb.html.",
-  "Books: downloading or reading is the livros_pdf resource; buying is livros_comprar; knowing which works exist is livros_catalogo; who wrote what is autores_livros. Searching inside the books is search_book.",
-  "Articles and periodicals for reading are the periodicos resource. The revistas and publicacoes_ccci destinations are institutional overviews.",
+  "Books: downloading, getting the full book or reading PDF works in Google Drive is the open_resource action with resource: livros_pdf; buying is livros_comprar; knowing which works exist is livros_catalogo; who wrote what is autores_livros. Searching inside the books is search_book.",
+  "Articles and periodicals for reading (including Revista Conscientia and scientific articles) are the open_resource action with resource: periodicos. The revistas and publicacoes_ccci destinations are institutional overviews.",
+  "Operational limitations (file uploads, graphic diagrams/figures generation, or third-party books/articles): reply in direct explaining politely that ConsBOT does not support file upload or graphic diagrams/figures, and that its chat corpus is strictly limited to Waldo Vieira's works and Encyclopedia entries.",
   "ConsGPT and ConsLM appear only when explicitly requested. LexiCons always opens in default Cosmovision mode.",
 ];
 

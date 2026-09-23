@@ -150,8 +150,19 @@ describe("chat settings", () => {
     expect(prompt).toContain("## Diretrizes Especiais e Ressalvas Cosmoéticas");
     expect(prompt).toContain("Redação de Verbetes, Artigos e Seções da Enciclopédia");
     expect(prompt).toContain(
-      "No papel de ferramenta cosmoética da Tares, minha sugestão é que use a IA para qualificar abordagens, debater assuntos ou até mesmo sugerir temas de pesquisa - mas, ao final, escreva sempre suas ideias com suas próprias palavras, a fim de desenvolver o mentalsoma pessoal.",
+      "no papel de ferramenta cosmoética da Tares, a sugestão para o pesquisador é usar a IA para qualificar abordagens",
     );
+  });
+
+  it("injeta as limitações operacionais e fontes documentais no system prompt", () => {
+    const prompt = buildSystemPrompt(DEFAULT_SETTINGS);
+    expect(prompt).toContain("### Limitações Operacionais e Fontes Documentais");
+    expect(prompt).toContain("Upload de arquivos");
+    expect(prompt).toContain("Geração de figuras ou diagramas gráficos");
+    expect(prompt).toContain("obras de autoria de **Waldo Vieira**");
+    expect(prompt).toContain("Enciclopédia da Conscienciologia");
+    expect(prompt).toContain("https://periodicos.conscienciologia.org.br/");
+    expect(prompt).toContain("https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj");
   });
 
   it("permite compilar ressalvas customizadas e respeita flag de ativação", () => {
