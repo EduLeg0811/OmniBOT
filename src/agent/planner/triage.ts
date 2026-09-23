@@ -1,5 +1,5 @@
 import { planAgent } from "@/agent/planner/plan";
-import { matchDeterministicActions, matchDeterministicRules } from "@/agent/planner/rules";
+import { matchDeterministicActions } from "@/agent/planner/rules";
 import type {
   AgentAction,
   AgentAnswerOrigin,
@@ -38,14 +38,10 @@ const BYPASS: AgentTriage = {
 export async function triageAgent(ctx: AgentContext): Promise<AgentTriage> {
   if (!ctx.settings.enabled) return BYPASS;
 
-  // 1. Regras determinísticas prioritárias (respostas diretas para restrições e navegações explícitas)
-  const deterministic = matchDeterministicRules(ctx);
-  if (deterministic) return deterministic;
-
-  // 2. Classificador LLM (Luna)
+  // 1. Classificador LLM (Luna) planeja o turno e decide ações e modo
   const plan = await planAgent(ctx);
 
-  // 3. Complemento de ações determinísticas não presentes no plano
+  // 2. Complemento de ações determinísticas pertinentes não presentes no plano
   let actions = plan.actions;
   const detActions = matchDeterministicActions(ctx);
   if (detActions.length > 0) {

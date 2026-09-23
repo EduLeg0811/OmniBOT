@@ -329,8 +329,8 @@ export const AGENT_TOOLS: AgentTool[] = [
     responsePolicy: "fulfills_explicit_action",
     describe: (en) =>
       en
-        ? "open_resource: ONLY explicit access/navigation/study-method requests for periodicos, enciclopedia, livros_pdf, quiz, flashcards, consgpt or conslm. Never promote ConsGPT/ConsLM spontaneously."
-        : "open_resource: SOMENTE pedido explícito de acesso, navegação ou método de estudo para periodicos, enciclopedia, livros_pdf, quiz, flashcards, consgpt ou conslm. Nunca promova ConsGPT/ConsLM espontaneamente.",
+        ? "open_resource: access, navigation or suggested links for periodicos (articles, scientific journals and periodicals), livros_pdf (full books in PDF on Google Drive), enciclopedia, quiz, flashcards, consgpt or conslm. Never promote ConsGPT/ConsLM spontaneously."
+        : "open_resource: acesso, navegação ou links sugeridos para periodicos (artigos, revistas científicas e periódicos), livros_pdf (livros completos em PDF no Google Drive), enciclopedia, quiz, flashcards, consgpt ou conslm. Nunca promova ConsGPT/ConsLM espontaneamente.",
     intro: (_m, en) =>
       en
         ? "The link below opens the requested resource."

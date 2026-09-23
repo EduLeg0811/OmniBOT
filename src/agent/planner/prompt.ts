@@ -13,10 +13,10 @@ const SHAPES_PT = [
   "1. Conceito nu: a mensagem é só um termo técnico ou substantivo, sem verbo. É pedido de explicação, não de busca. full, sem ação.",
   "2. Continuação elíptica: imperativo curto que depende do turno anterior (seguir, ampliar, acrescentar, continuar, melhorar). Herda a intenção do turno anterior; nunca peça esclarecimento e nunca crie ação nova a partir da palavra isolada.",
   "3. Colagem com instrução: bloco longo colado com uma ordem curta antes ou depois. A instrução governa; o bloco é material de trabalho, não pergunta. Nunca extraia termo de busca de dentro do bloco.",
-  "4. Pergunta conceitual, factual, comparativa, de síntese ou de redação: o caso mais comum. full. Só crie ação se um destino específico acrescentar algo que a resposta sozinha não dá.",
+  "4. Pergunta conceitual, factual, comparativa, de síntese, redação ou sobre acervo/artigos/obras: o caso mais comum. full. Crie ação quando um destino específico acrescentar algo (ex.: periodicos para artigos de revistas ou livros_pdf para download de livros em PDF).",
   "5. Pedido de procedência: quer a fonte, a obra ou a referência de algo já dito. Merece resposta E ação; jamais só a ação.",
   "6. Recuperação literal explícita: verbo de busca somado a um termo delimitado. Único caso em que a ação é o centro do turno.",
-  "7. Meta sobre o assistente: capacidade, fontes carregadas, natureza, funcionamento ou limitações do ConsBOT (upload de arquivos, geração de figuras/diagramas gráficos, acervo documental restrito a Waldo Vieira e verbetes da Enciclopédia). direct, informando gentilmente a restrição em answer, sem ação externa (exceto se pedir onde consultar periódicos ou livros em PDF, caso em que acompanha a respectiva ação).",
+  "7. Meta sobre o assistente: capacidade, fontes carregadas, natureza ou funcionamento técnico do ConsBOT. direct somente quando for pergunta puramente factual sobre o próprio bot.",
   "8. Social: saudação, agradecimento, despedida. direct, sem ação.",
 ];
 const SHAPES_EN = [
@@ -24,10 +24,10 @@ const SHAPES_EN = [
   "1. Bare concept: the message is a single technical term or noun, with no verb. It asks for an explanation, not a search. full, no action.",
   "2. Elliptical continuation: a short imperative depending on the previous turn (continue, expand, add, improve). It inherits the previous intent; never ask for clarification and never build a new action from the isolated word.",
   "3. Pasted block with an instruction: a long paste with a short order before or after. The instruction governs; the block is working material, not a question. Never take a search term from inside the block.",
-  "4. Conceptual, factual, comparative, synthesis or writing request: the most common case. full. Create an action only when a specific destination adds something the answer alone does not.",
+  "4. Conceptual, factual, comparative, synthesis, writing or collection/articles/books request: the most common case. full. Create an action when a specific destination adds value (e.g. periodicos for journal articles or livros_pdf for PDF book downloads).",
   "5. Provenance request: wants the source, work or reference of something already said. Deserves an answer AND an action; never the action alone.",
   "6. Explicit literal retrieval: a search verb plus a delimited term. The only case where the action is the centre of the turn.",
-  "7. Meta about the assistant: capability, loaded sources, how ConsBOT works, or operational limitations (file uploads, graphic diagrams/figures generation, document scope restricted to Waldo Vieira and Encyclopedia entries). direct, gently stating the limitation in answer, with no external action (unless asking where to consult periodicals or books in PDF, where the respective action accompanies).",
+  "7. Meta about the assistant: capability, loaded sources, nature or technical operation of ConsBOT. direct only for purely factual questions about the bot itself.",
   "8. Social: greeting, thanks, farewell. direct, no action.",
 ];
 
@@ -38,9 +38,8 @@ const PRECEDENCE_PT = [
   "Buscas por termo/conceito: a não ser que o usuário aponte objetivamente apenas o verbete ou apenas o livro, normalmente ao indicar pill de busca sugira em conjunto a busca de verbete (search_verbete) e a busca em livros (search_book) com o mesmo termo. Se o usuário apontar objetivamente apenas um deles (ex.: citar obra/livro específico ou pedir expressamente 'nos livros' ou 'nos verbetes'), sugira somente a ferramenta solicitada.",
   "Consultar o conteúdo de um verbete é sempre search_verbete. As listagens de verbetes defendidos ou em andamento servem a quem escreve verbete, nunca a quem quer ler um.",
   "Nunca sugira pills de https://www.icge.org.br/?page_id=13493 (Verbetoteca do ICGE) e https://cons-ia.org/index_search_verb.html (search_verbete) ao mesmo tempo: eles são duas formas similares de buscar verbetes. Prefira sempre https://cons-ia.org/index_search_verb.html.",
-  "Livros: baixar, obter livro completo ou ler obras em PDF no Google Drive é a ação open_resource com resource: livros_pdf; comprar é livros_comprar; saber que obras existem é livros_catalogo; quem escreveu o quê é autores_livros. Buscar o conteúdo dentro dos livros é search_book.",
-  "Artigos de revistas e periódicos para leitura (incluindo Revista Conscientia e artigos científicos) são a ação open_resource com resource: periodicos. Os destinos revistas e publicacoes_ccci são panorama institucional.",
-  "Limitações operacionais (upload de arquivos, geração de figuras/diagramas gráficos, ou acervo de terceiros não contido no chat): responda em direct esclarecendo gentilmente que o ConsBOT não realiza upload de arquivos nem gera figuras/diagramas gráficos, e que seu acervo no chat abrange exclusivamente obras de Waldo Vieira e verbetes da Enciclopédia.",
+  "Livros em PDF e obras completas: baixar, obter livro completo ou ler obras em PDF no Google Drive é a ação open_resource com resource: livros_pdf. Sugira este pill sempre que for pertinente à consulta sobre leitura/download de obras. Comprar é livros_comprar; catálogo de obras existentes é livros_catalogo; autoria é autores_livros. Buscar o conteúdo dentro dos livros é search_book.",
+  "Artigos de revistas e periódicos para leitura (incluindo Revista Conscientia e artigos científicos): sugira a ação open_resource com resource: periodicos acompanhando a resposta sempre que a pergunta envolver artigos, periódicos ou revistas. Os destinos revistas e publicacoes_ccci são panorama institucional.",
   "ConsGPT e ConsLM só aparecem quando explicitamente pedidos. LexiCons sempre abre no modo padrão Cosmovisão.",
 ];
 const PRECEDENCE_EN = [
@@ -48,9 +47,8 @@ const PRECEDENCE_EN = [
   "Term/concept searches: unless the user objectively specifies only the entry or only the book, normally when suggesting a search pill suggest both entry search (search_verbete) and book search (search_book) together for the same term. If the user objectively specifies only one (e.g., names a specific book/work or explicitly asks 'in the books' or 'in the entries'), suggest only the requested tool.",
   "Reading the content of an entry is always search_verbete. The defended and in-progress entry listings serve entry writers, never someone who wants to read one.",
   "Never suggest pills for https://www.icge.org.br/?page_id=13493 (ICGE Verbetoteca) and https://cons-ia.org/index_search_verb.html (search_verbete) at the same time: they are two similar ways of searching entries. Always prefer https://cons-ia.org/index_search_verb.html.",
-  "Books: downloading, getting the full book or reading PDF works in Google Drive is the open_resource action with resource: livros_pdf; buying is livros_comprar; knowing which works exist is livros_catalogo; who wrote what is autores_livros. Searching inside the books is search_book.",
-  "Articles and periodicals for reading (including Revista Conscientia and scientific articles) are the open_resource action with resource: periodicos. The revistas and publicacoes_ccci destinations are institutional overviews.",
-  "Operational limitations (file uploads, graphic diagrams/figures generation, or third-party books/articles): reply in direct explaining politely that ConsBOT does not support file upload or graphic diagrams/figures, and that its chat corpus is strictly limited to Waldo Vieira's works and Encyclopedia entries.",
+  "Books in PDF and complete works: downloading, getting the full book or reading PDF works in Google Drive is the open_resource action with resource: livros_pdf. Suggest this pill whenever relevant to reading/downloading works. Buying is livros_comprar; catalog of existing works is livros_catalogo; authorship is autores_livros. Searching inside the books is search_book.",
+  "Articles and periodicals for reading (including Revista Conscientia and scientific articles): suggest the open_resource action with resource: periodicos accompanying the answer whenever the query involves articles, periodicals or journals. The revistas and publicacoes_ccci destinations are institutional overviews.",
   "ConsGPT and ConsLM appear only when explicitly requested. LexiCons always opens in default Cosmovision mode.",
 ];
 
