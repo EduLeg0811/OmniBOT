@@ -331,8 +331,8 @@ export const AGENT_RESOURCE_IDS = [
   "conslm",
 ] as const;
 
-export const AGENT_PLANNER_TIMEOUT_MS = 12_000;
-export const AGENT_CLASSIFIER_MODEL = "gpt-5.6-luna";
+export const AGENT_PLANNER_TIMEOUT_MS = 6_000;
+export const AGENT_CLASSIFIER_MODEL = "gpt-6-luna";
 export const AGENT_CLASSIFIER_REASONING = { id: "none", label: "None" } as const;
 export const AGENT_CONFIDENCE_MEDIUM = 0.55;
 export const AGENT_ANSWER_MAX = 320;
