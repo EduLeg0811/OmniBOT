@@ -315,34 +315,50 @@ function SourcesHeader({
             {selectedStore.description}
           </p>
         ) : null}
-        <div className="flex items-center gap-2">
-          <Select
-            value={selectedStoreId}
-            onValueChange={(value) => onSelectChange(value as VectorStoreId)}
-          >
-            <SelectTrigger className="min-w-0 flex-1 bg-card shadow-[0_2px_8px_-5px_rgba(25,70,50,0.32)]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {vectorStoresFor(isAdmin).map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            className="shrink-0 bg-card shadow-[0_2px_8px_-5px_rgba(25,70,50,0.32)]"
-            aria-label="Atualizar fontes"
-            title="Atualizar fontes"
-            onClick={onRefresh}
-            disabled={disabled}
-          >
-            <RefreshCw className={cn(disabled && "animate-spin")} />
-          </Button>
-        </div>
+        {isAdmin ? (
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedStoreId}
+              onValueChange={(value) => onSelectChange(value as VectorStoreId)}
+            >
+              <SelectTrigger className="min-w-0 flex-1 bg-card shadow-[0_2px_8px_-5px_rgba(25,70,50,0.32)]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {vectorStoresFor(isAdmin).map((store) => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 bg-card shadow-[0_2px_8px_-5px_rgba(25,70,50,0.32)]"
+              aria-label="Atualizar fontes"
+              title="Atualizar fontes"
+              onClick={onRefresh}
+              disabled={disabled}
+            >
+              <RefreshCw className={cn(disabled && "animate-spin")} />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-border/70 bg-card/75 px-3 py-2 text-xs">
+            <span className="font-semibold text-foreground">{selectedStore?.label}</span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Atualizar fontes"
+              title="Atualizar fontes"
+              onClick={onRefresh}
+              disabled={disabled}
+            >
+              <RefreshCw className={cn("size-3.5", disabled && "animate-spin")} />
+            </Button>
+          </div>
+        )}
         <p
           className={cn(
             "text-[11px] leading-relaxed",

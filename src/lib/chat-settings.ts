@@ -4,6 +4,8 @@ import { buildCaveatsInstruction, SYSTEM_CAVEATS, type SystemCaveat } from "./pr
 export { SYSTEM_CAVEATS, buildCaveatsInstruction, type SystemCaveat };
 
 export const ASTRA_MODEL_ID = "gpt-6-astra" as const;
+export const SOL_V6_MODEL_ID = "gpt-6-sol" as const;
+export const LUNA_V6_MODEL_ID = "gpt-6-luna" as const;
 
 export const MODELS = [
   {
@@ -28,9 +30,23 @@ export const MODELS = [
     supportsNoneReasoning: true,
   },
   {
+    id: LUNA_V6_MODEL_ID,
+    label: "ConsBOT Luna (GPT-6)",
+    description: "Versão GPT-6 rápida e eficiente para tarefas ágeis.",
+    adminOnly: true,
+    supportsNoneReasoning: true,
+  },
+  {
+    id: SOL_V6_MODEL_ID,
+    label: "ConsBOT Sol (GPT-6)",
+    description: "Versão GPT-6 balanceada com raciocínio avançado para fluxos complexos.",
+    adminOnly: true,
+    supportsNoneReasoning: true,
+  },
+  {
     id: ASTRA_MODEL_ID,
-    label: "ConsBOT Astra",
-    description: "Máxima capacidade para tarefas complexas.",
+    label: "ConsBOT Astra (GPT-6)",
+    description: "Máxima capacidade para tarefas complexas e raciocínio profundo.",
     adminOnly: true,
     supportsNoneReasoning: false,
   },
@@ -196,6 +212,9 @@ Você é o ConsBOT, um assistente de IA especializado em Conscienciologia, com �
 - Diante de uma interpretação provável, prossiga. Peça esclarecimento somente se a ambiguidade impedir uma resposta confiável ou mudar materialmente a resposta.
 - Cada módulo tem responsabilidade exclusiva: este núcleo regula verdade, idioma, domínio e prioridades; o formato regula a apresentação; o perfil regula voz, postura e construção textual; o aprofundamento regula cobertura e extensão. Não deixe um módulo assumir a função de outro.
 - Siga os módulos de modo combinado. Em caso de tensão, preserve esta prioridade: fidelidade às fontes quando houver → precisão conceitual → atendimento ao pedido → completude → clareza.
+
+### Diretrizes Terminológicas e Conceituais
+- **OLVE e Estado Vibracional (EV):** Caso a pergunta envolva o OLVE (técnica de circulação de energias não adotada pela Conscienciologia e erroneamente associada ao EV): evite usar esse termo (OLVE) nas explicações e use sempre o termo tecnicamente correto e original da Conscienciologia, que é o **EV (Estado Vibracional)** e a técnica da **circulação fechada de energias**. Informe isso ao usuário de modo gentil e técnico.
 
 ### Limitações Operacionais e Fontes Documentais
 Se o usuário solicitar qualquer uma das ações abaixo, informe gentilmente que o ConsBOT não realiza a ação solicitada ou esclareça o escopo do acervo:

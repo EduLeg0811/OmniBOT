@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +50,33 @@ let initialSessionThread: ChatThread | null = null;
 
 const ADMIN_STORAGE_KEY = "consbot_admin";
 
+function getSharedCookieDomain(): string {
+  if (typeof window === "undefined") return "";
+  const hostname = window.location.hostname.toLowerCase();
+  if (hostname.endsWith("cons-ia.org")) {
+    return "; domain=.cons-ia.org";
+  }
+  return "";
+}
+
+function setAdminCookie(enabled: boolean) {
+  if (typeof document === "undefined") return;
+  const domain = getSharedCookieDomain();
+  if (enabled) {
+    document.cookie = `${ADMIN_STORAGE_KEY}=1; path=/; max-age=2592000; SameSite=Lax${domain}`;
+  } else {
+    document.cookie = `${ADMIN_STORAGE_KEY}=; path=/; max-age=0; SameSite=Lax${domain}`;
+    document.cookie = `${ADMIN_STORAGE_KEY}=; path=/; max-age=0; SameSite=Lax`;
+  }
+}
+
+function readAdminCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie
+    .split("; ")
+    .some((row) => row.startsWith(`${ADMIN_STORAGE_KEY}=1`));
+}
+
 function readInitialAdminState(): boolean {
   if (typeof window !== "undefined") {
     const hash = window.location.hash;
@@ -57,6 +84,7 @@ function readInitialAdminState(): boolean {
       try {
         localStorage.setItem(ADMIN_STORAGE_KEY, "1");
       } catch {}
+      setAdminCookie(true);
       window.history.replaceState(
         null,
         "",
@@ -68,6 +96,7 @@ function readInitialAdminState(): boolean {
       try {
         localStorage.removeItem(ADMIN_STORAGE_KEY);
       } catch {}
+      setAdminCookie(false);
       window.history.replaceState(
         null,
         "",
@@ -77,11 +106,24 @@ function readInitialAdminState(): boolean {
     }
 
     try {
-      if (localStorage.getItem(ADMIN_STORAGE_KEY) === "1") return true;
+      if (localStorage.getItem(ADMIN_STORAGE_KEY) === "1") {
+        setAdminCookie(true);
+        return true;
+      }
     } catch {}
+
+    if (readAdminCookie()) {
+      try {
+        localStorage.setItem(ADMIN_STORAGE_KEY, "1");
+      } catch {}
+      return true;
+    }
   }
 
-  if (import.meta.env.DEV) return true;
+  if (import.meta.env.DEV) {
+    setAdminCookie(true);
+    return true;
+  }
 
   const isLocalhost =
     typeof window !== "undefined" &&
@@ -89,7 +131,11 @@ function readInitialAdminState(): boolean {
       window.location.hostname === "127.0.0.1" ||
       window.location.hostname === "[::1]");
   const buildFlag = String(import.meta.env.VITE_ACCESS_LEVEL || "").trim() === "1";
-  return isLocalhost || buildFlag;
+  const result = isLocalhost || buildFlag;
+  if (result) {
+    setAdminCookie(true);
+  }
+  return result;
 }
 
 export function ThreadPage() {
@@ -129,6 +175,7 @@ export function ThreadPage() {
         try {
           localStorage.setItem(ADMIN_STORAGE_KEY, "1");
         } catch {}
+        setAdminCookie(true);
         setIsAdmin(true);
         window.history.replaceState(
           null,
@@ -143,6 +190,7 @@ export function ThreadPage() {
         try {
           localStorage.removeItem(ADMIN_STORAGE_KEY);
         } catch {}
+        setAdminCookie(false);
         setIsAdmin(false);
         window.history.replaceState(
           null,
@@ -161,9 +209,14 @@ export function ThreadPage() {
     try {
       localStorage.removeItem(ADMIN_STORAGE_KEY);
     } catch {}
+    setAdminCookie(false);
     setIsAdmin(false);
     toast.info("Você saiu do modo Administrador.");
   }, []);
+
+  useEffect(() => {
+    setAdminCookie(isAdmin);
+  }, [isAdmin]);
 
   useEffect(() => {
     setAuditLogs(loadAuditLogs(activeId));

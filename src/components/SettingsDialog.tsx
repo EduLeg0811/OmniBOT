@@ -17,9 +17,10 @@ import { DEFAULT_SETTINGS, type ChatSettings } from "@/lib/chat-settings";
 type Props = {
   settings: ChatSettings;
   onSave: (settings: ChatSettings) => void;
+  isAdmin?: boolean;
 };
 
-export function SettingsDialog({ settings, onSave }: Props) {
+export function SettingsDialog({ settings, onSave, isAdmin = false }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ChatSettings>(settings);
 
@@ -47,7 +48,7 @@ export function SettingsDialog({ settings, onSave }: Props) {
         <div className="py-2">
           {/* Diálogo sem consumidores hoje; enquanto existir, é o painel
               completo — quem restringe por nível de acesso é a sidebar. */}
-          <SettingsFields value={draft} onChange={setDraft} isAdmin />
+          <SettingsFields value={draft} onChange={setDraft} isAdmin={isAdmin} />
         </div>
 
         <DialogFooter className="gap-2">

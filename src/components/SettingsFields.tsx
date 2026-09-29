@@ -52,6 +52,9 @@ import {
   withProfile,
   withResponseDepth,
   withResponseFormat,
+  VECTOR_STORES,
+  vectorStoresFor,
+  type VectorStoreId,
   type ChatSettings,
   type ModelId,
   type ProfileId,
@@ -426,8 +429,8 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
             collapsible
             defaultOpen={false}
             icon={Bot}
-            title="Modelo e recuperação RAG"
-            description="Defina a capacidade do modelo e a quantidade de trechos do File Search."
+            title="Modelo, Esforço e Vector Store"
+            description="Defina a capacidade do modelo, esforço de raciocínio e a base de conhecimento RAG."
           >
             <div className="space-y-2">
               <Label>Modelo</Label>
@@ -492,6 +495,30 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Base de Conhecimento (Vector Store)</Label>
+              <Select
+                value={draft.vectorStoreId}
+                onValueChange={(value) =>
+                  setDraft({ ...draft, vectorStoreId: value as VectorStoreId })
+                }
+              >
+                <SelectTrigger className="bg-card/90 text-xs shadow-[0_2px_8px_-5px_rgba(25,70,50,0.32)]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="text-xs">
+                  {vectorStoresFor(isAdmin).map((store) => (
+                    <SelectItem className="text-xs" key={store.id} value={store.id}>
+                      {store.label} {store.description ? `— ${store.description}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {VECTOR_STORES.find((m) => m.id === draft.vectorStoreId)?.description}
+              </p>
             </div>
 
             <div className="space-y-3">

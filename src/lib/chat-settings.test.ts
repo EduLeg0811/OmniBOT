@@ -19,25 +19,50 @@ import {
 } from "@/lib/chat-settings";
 
 describe("chat settings", () => {
-  it("oferece o Astra somente no catálogo administrativo", () => {
-    expect(modelsFor(true).map((model) => model.id)).toContain("gpt-6-astra");
-    expect(modelsFor(false).map((model) => model.id)).not.toContain("gpt-6-astra");
+  it("oferece os modelos da família GPT-6 somente no catálogo administrativo", () => {
+    const adminModelIds = modelsFor(true).map((model) => model.id);
+    const publicModelIds = modelsFor(false).map((model) => model.id);
+
+    expect(adminModelIds).toContain("gpt-6-astra");
+    expect(adminModelIds).toContain("gpt-6-sol");
+    expect(adminModelIds).toContain("gpt-6-luna");
+
+    expect(publicModelIds).not.toContain("gpt-6-astra");
+    expect(publicModelIds).not.toContain("gpt-6-sol");
+    expect(publicModelIds).not.toContain("gpt-6-luna");
+
     expect(MODELS.find((model) => model.id === "gpt-6-astra")).toMatchObject({
-      label: "ConsBOT Astra",
+      label: "ConsBOT Astra (GPT-6)",
       adminOnly: true,
       supportsNoneReasoning: false,
     });
+    expect(MODELS.find((model) => model.id === "gpt-6-sol")).toMatchObject({
+      label: "ConsBOT Sol (GPT-6)",
+      adminOnly: true,
+      supportsNoneReasoning: true,
+    });
+    expect(MODELS.find((model) => model.id === "gpt-6-luna")).toMatchObject({
+      label: "ConsBOT Luna (GPT-6)",
+      adminOnly: true,
+      supportsNoneReasoning: true,
+    });
   });
 
-  it("troca o raciocínio none por low ao selecionar Astra", () => {
+  it("trata o raciocínio none conforme a compatibilidade de cada modelo GPT-6", () => {
     expect(normalizeReasoningEffortForModel("gpt-6-astra", "none")).toBe("low");
     expect(normalizeReasoningEffortForModel("gpt-6-astra", "high")).toBe("high");
+    expect(normalizeReasoningEffortForModel("gpt-6-sol", "none")).toBe("none");
+    expect(normalizeReasoningEffortForModel("gpt-6-luna", "none")).toBe("none");
     expect(normalizeReasoningEffortForModel("gpt-5.6-luna", "none")).toBe("none");
   });
 
-  it("restaura o modelo do perfil quando uma configuração Astra chega ao modo público", () => {
-    const settings = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-astra" });
-    expect(settings.model).toBe("gpt-5.6-terra");
+  it("restaura o modelo do perfil quando uma configuração GPT-6 chega ao modo público", () => {
+    const settingsAstra = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-astra" });
+    expect(settingsAstra.model).toBe("gpt-5.6-terra");
+    const settingsSol = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-sol" });
+    expect(settingsSol.model).toBe("gpt-5.6-terra");
+    const settingsLuna = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-luna" });
+    expect(settingsLuna.model).toBe("gpt-5.6-terra");
   });
 
   it("inicializa novas conversas com o preset padrão de introdutor", () => {
@@ -152,6 +177,14 @@ describe("chat settings", () => {
     expect(prompt).toContain(
       "no papel de ferramenta cosmoética da Tares, a sugestão para o pesquisador é usar a IA para qualificar abordagens",
     );
+  });
+
+  it("injeta a diretriz sobre OLVE e EV no system prompt", () => {
+    const prompt = buildSystemPrompt(DEFAULT_SETTINGS);
+    expect(prompt).toContain("### Diretrizes Terminológicas e Conceituais");
+    expect(prompt).toContain("OLVE e Estado Vibracional (EV)");
+    expect(prompt).toContain("técnica de circulação de energias não adotada pela Conscienciologia");
+    expect(prompt).toContain("EV (Estado Vibracional)");
   });
 
   it("injeta as limitações operacionais e fontes documentais no system prompt", () => {

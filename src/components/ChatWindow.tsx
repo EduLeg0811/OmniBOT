@@ -573,8 +573,12 @@ export function ChatWindow({
     }),
     [isEnglish, onAuditInteraction, settings.vectorStoreId, threadId],
   );
+  const modelGeneration = activeModel?.id.startsWith("gpt-6") ? "GPT-6" : "GPT-5.6";
+  const modelName = activeModel
+    ? activeModel.label.replace("ConsBOT ", "").replace(" (GPT-6)", "")
+    : "Terra";
   const llmParameters = [
-    `GPT-5.6 ${activeModel?.label.replace("ConsBOT ", "") ?? "Terra"}`,
+    `${modelGeneration} ${modelName}`,
     activeProfile?.label ?? "Tutor",
     !isMobile ? REASONING_LABELS[settings.reasoningEffort] : undefined,
     activeDepth?.label ?? "Equilibrada",
@@ -939,13 +943,16 @@ export function ChatWindow({
 
   useEffect(() => {
     if (!isBusy && !isMobile) {
-      textareaRef.current?.focus();
-      if (textareaRef.current && input) {
-        const len = textareaRef.current.value.length;
-        textareaRef.current.setSelectionRange(len, len);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const alreadyFocused = document.activeElement === textarea;
+      textarea.focus();
+      if (!alreadyFocused && textarea.value) {
+        const len = textarea.value.length;
+        textarea.setSelectionRange(len, len);
       }
     }
-  }, [isBusy, isMobile, threadId, input]);
+  }, [isBusy, isMobile, threadId]);
 
   useEffect(() => {
     if (isBusy) {
