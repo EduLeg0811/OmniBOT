@@ -19,17 +19,16 @@ import {
 } from "@/lib/chat-settings";
 
 describe("chat settings", () => {
-  it("oferece os modelos da família GPT-6 somente no catálogo administrativo", () => {
+  it("contém exclusivamente modelos da família GPT-6", () => {
+    const allModelIds = MODELS.map((model) => model.id);
+    expect(allModelIds).toEqual(["gpt-6-luna", "gpt-6-sol", "gpt-6-astra"]);
+
     const adminModelIds = modelsFor(true).map((model) => model.id);
     const publicModelIds = modelsFor(false).map((model) => model.id);
 
-    expect(adminModelIds).toContain("gpt-6-astra");
-    expect(adminModelIds).toContain("gpt-6-sol");
-    expect(adminModelIds).toContain("gpt-6-luna");
-
+    expect(adminModelIds).toEqual(["gpt-6-luna", "gpt-6-sol", "gpt-6-astra"]);
+    expect(publicModelIds).toEqual(["gpt-6-luna", "gpt-6-sol"]);
     expect(publicModelIds).not.toContain("gpt-6-astra");
-    expect(publicModelIds).not.toContain("gpt-6-sol");
-    expect(publicModelIds).not.toContain("gpt-6-luna");
 
     expect(MODELS.find((model) => model.id === "gpt-6-astra")).toMatchObject({
       label: "ConsBOT Astra (GPT-6)",
@@ -38,12 +37,12 @@ describe("chat settings", () => {
     });
     expect(MODELS.find((model) => model.id === "gpt-6-sol")).toMatchObject({
       label: "ConsBOT Sol (GPT-6)",
-      adminOnly: true,
+      adminOnly: false,
       supportsNoneReasoning: true,
     });
     expect(MODELS.find((model) => model.id === "gpt-6-luna")).toMatchObject({
       label: "ConsBOT Luna (GPT-6)",
-      adminOnly: true,
+      adminOnly: false,
       supportsNoneReasoning: true,
     });
   });
@@ -53,23 +52,18 @@ describe("chat settings", () => {
     expect(normalizeReasoningEffortForModel("gpt-6-astra", "high")).toBe("high");
     expect(normalizeReasoningEffortForModel("gpt-6-sol", "none")).toBe("none");
     expect(normalizeReasoningEffortForModel("gpt-6-luna", "none")).toBe("none");
-    expect(normalizeReasoningEffortForModel("gpt-5.6-luna", "none")).toBe("none");
   });
 
-  it("restaura o modelo do perfil quando uma configuração GPT-6 chega ao modo público", () => {
+  it("restaura o modelo do perfil quando uma configuração restrita a admin chega ao modo público", () => {
     const settingsAstra = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-astra" });
-    expect(settingsAstra.model).toBe("gpt-5.6-terra");
-    const settingsSol = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-sol" });
-    expect(settingsSol.model).toBe("gpt-5.6-terra");
-    const settingsLuna = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-luna" });
-    expect(settingsLuna.model).toBe("gpt-5.6-terra");
+    expect(settingsAstra.model).toBe("gpt-6-luna");
   });
 
   it("inicializa novas conversas com o preset padrão de introdutor", () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
       profile: "introdutor",
       retrievalMode: "standard",
-      model: "gpt-5.6-terra",
+      model: "gpt-6-luna",
       reasoningEffort: "low",
       vectorMaxResults: 5,
       responseFormat: "chatgpt",
@@ -195,7 +189,9 @@ describe("chat settings", () => {
     expect(prompt).toContain("obras de autoria de **Waldo Vieira**");
     expect(prompt).toContain("Enciclopédia da Conscienciologia");
     expect(prompt).toContain("https://periodicos.conscienciologia.org.br/");
-    expect(prompt).toContain("https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj");
+    expect(prompt).toContain(
+      "https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
+    );
   });
 
   it("permite compilar ressalvas customizadas e respeita flag de ativação", () => {

@@ -22,6 +22,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import {
   DEFAULT_SETTINGS,
+  LUNA_V6_MODEL_ID,
   MODELS,
   PROFILES,
   RESPONSE_DEPTHS,
@@ -573,10 +574,10 @@ export function ChatWindow({
     }),
     [isEnglish, onAuditInteraction, settings.vectorStoreId, threadId],
   );
-  const modelGeneration = activeModel?.id.startsWith("gpt-6") ? "GPT-6" : "GPT-5.6";
+  const modelGeneration = "GPT-6";
   const modelName = activeModel
     ? activeModel.label.replace("ConsBOT ", "").replace(" (GPT-6)", "")
-    : "Terra";
+    : "Sol";
   const llmParameters = [
     `${modelGeneration} ${modelName}`,
     activeProfile?.label ?? "Tutor",
@@ -764,7 +765,7 @@ export function ChatWindow({
             content: agentFollowUpPrompt(followUpContext, english),
           },
         ],
-        model: "gpt-5.6-luna",
+        model: LUNA_V6_MODEL_ID,
         reasoningEffort: "none",
         verbosity: "low",
         promptCacheKey: english ? "agent-follow-up-v3-en" : "agent-follow-up-v3-pt",
@@ -1618,7 +1619,7 @@ export function ChatWindow({
 
       const requestBody = {
         messages: [{ role: "user", content: prompt }],
-        model: "gpt-5.6-luna",
+        model: LUNA_V6_MODEL_ID,
         reasoningEffort: "none",
         verbosity: "low",
         responseSchema: SUGGESTIONS_SCHEMA,

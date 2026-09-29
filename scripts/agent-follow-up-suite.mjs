@@ -16,7 +16,7 @@ import { FOLLOW_UP_CASES } from "./agent-follow-up-cases.mjs";
 
 const ROOT = process.cwd();
 const API_BASE = (process.env.VITE_MAIN_SERVER_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const MODEL = "gpt-5.6-luna";
+const MODEL = "gpt-6-luna";
 const ONLY = process.argv[process.argv.indexOf("--case") + 1] || "";
 
 async function loadFollowUp() {

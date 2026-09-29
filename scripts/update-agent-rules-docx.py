@@ -89,7 +89,7 @@ set_cell_text(box.cell(0, 0), "Objetivo: oferecer ações contextuais úteis sem
 doc.add_paragraph()
 doc.add_heading("Princípios", level=1)
 for item in [
-    "O gpt-5.6-luna classifica todos os turnos; não existe classificação determinística local.",
+    "O gpt-6-luna classifica todos os turnos; não existe classificação determinística local.",
     "Necessidade de resposta e relevância dos pills são decisões independentes.",
     "Ações externas apenas preparam navegação; nunca são apresentadas como resultados já obtidos.",
     "No Clássico, corpus é proibido e sempre rebaixado para full.",
@@ -100,7 +100,7 @@ for item in [
 doc.add_page_break()
 doc.add_heading("1. Operação do classificador", level=1)
 table(["Parâmetro", "Contrato"], [
-    ("Modelo", "gpt-5.6-luna"),
+    ("Modelo", "gpt-6-luna"),
     ("Raciocínio", "reasoningEffort: none"),
     ("Verbosidade", "low"),
     ("Saída", "JSON estrito via Responses API"),

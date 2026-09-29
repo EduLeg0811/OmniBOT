@@ -9,38 +9,17 @@ export const LUNA_V6_MODEL_ID = "gpt-6-luna" as const;
 
 export const MODELS = [
   {
-    id: "gpt-5.6-luna",
-    label: "ConsBOT Luna",
-    description: "Rápido para conversas do dia a dia.",
-    adminOnly: false,
-    supportsNoneReasoning: true,
-  },
-  {
-    id: "gpt-5.6-terra",
-    label: "ConsBOT Terra",
-    description: "Equilíbrio entre alta qualidade e velocidade.",
-    adminOnly: false,
-    supportsNoneReasoning: true,
-  },
-  {
-    id: "gpt-5.6-sol",
-    label: "ConsBOT Sol",
-    description: "Raciocínio avançado para tarefas complexas.",
-    adminOnly: false,
-    supportsNoneReasoning: true,
-  },
-  {
     id: LUNA_V6_MODEL_ID,
     label: "ConsBOT Luna (GPT-6)",
     description: "Versão GPT-6 rápida e eficiente para tarefas ágeis.",
-    adminOnly: true,
+    adminOnly: false,
     supportsNoneReasoning: true,
   },
   {
     id: SOL_V6_MODEL_ID,
     label: "ConsBOT Sol (GPT-6)",
     description: "Versão GPT-6 balanceada com raciocínio avançado para fluxos complexos.",
-    adminOnly: true,
+    adminOnly: false,
     supportsNoneReasoning: true,
   },
   {
@@ -91,13 +70,13 @@ export const RESPONSE_FORMATS: Array<{
   label: string;
   description: string;
 }> = [
-    { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
-    {
-      id: "conscienciological",
-      label: "Confor CONS",
-      description: "Estilo da Conscienciologia",
-    },
-  ];
+  { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
+  {
+    id: "conscienciological",
+    label: "Confor CONS",
+    description: "Estilo da Conscienciologia",
+  },
+];
 
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -182,11 +161,11 @@ export const PROFILES: Array<{
   label: string;
   description: string;
 }> = [
-    { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
-    { id: "tutor", label: "Tutor", description: "Didático e cordial" },
-    { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
-    { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
-  ];
+  { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
+  { id: "tutor", label: "Tutor", description: "Didático e cordial" },
+  { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
+  { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
+];
 
 export const PROFILE_INSTRUCTIONS: Record<ProfileId, string> = {
   preceptor: `## Perfil: Preceptor
@@ -324,7 +303,7 @@ export interface ProfileLlmDefaults {
 
 export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
   introdutor: {
-    model: "gpt-5.6-terra",
+    model: LUNA_V6_MODEL_ID,
     reasoningEffort: "low",
     responseFormat: "chatgpt",
     responseDepth: "synthetic",
@@ -332,7 +311,7 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
     vectorMaxResults: 5,
   },
   tutor: {
-    model: "gpt-5.6-terra",
+    model: SOL_V6_MODEL_ID,
     reasoningEffort: "low",
     responseFormat: "chatgpt",
     responseDepth: "synthetic",
@@ -340,7 +319,7 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
     vectorMaxResults: 10,
   },
   escritor: {
-    model: "gpt-5.6-terra",
+    model: SOL_V6_MODEL_ID,
     reasoningEffort: "medium",
     responseFormat: "chatgpt",
     responseDepth: "complete",
@@ -348,7 +327,7 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
     vectorMaxResults: 15,
   },
   preceptor: {
-    model: "gpt-5.6-sol",
+    model: SOL_V6_MODEL_ID,
     reasoningEffort: "high",
     responseFormat: "conscienciological",
     responseDepth: "balanced",

@@ -28,7 +28,7 @@ import { CASES } from "./agent-planner-cases.mjs";
 
 const ROOT = process.cwd();
 const API_BASE = (process.env.VITE_MAIN_SERVER_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const MODEL = "gpt-5.6-luna";
+const MODEL = "gpt-6-luna";
 /** Chamadas em paralelo. Baixo de propósito: a suíte não deve competir com o
  * uso normal do servidor nem estourar limite de taxa. */
 const CONCURRENCY = 4;
