@@ -82,7 +82,7 @@ export const SIDEBAR_QUICK_LINKS = [
     color: "text-violet-500 dark:text-violet-400",
   },
   {
-    title: "Cosmovisão de Dicionários",
+    title: "Cosmovisão Dicionarística",
     url: "https://lexicons.cons-ia.org/",
     icon: BookA,
     color: "text-teal-500 dark:text-teal-400",
