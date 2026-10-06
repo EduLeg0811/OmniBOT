@@ -19,24 +19,18 @@ import {
 } from "@/lib/chat-settings";
 
 describe("chat settings", () => {
-  it("contém exclusivamente modelos da família GPT-6", () => {
+  it("contém exclusivamente modelos da família GPT-6 / GPT-6.1", () => {
     const allModelIds = MODELS.map((model) => model.id);
-    expect(allModelIds).toEqual(["gpt-6-luna", "gpt-6-sol", "gpt-6-astra"]);
+    expect(allModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol"]);
 
     const adminModelIds = modelsFor(true).map((model) => model.id);
     const publicModelIds = modelsFor(false).map((model) => model.id);
 
-    expect(adminModelIds).toEqual(["gpt-6-luna", "gpt-6-sol", "gpt-6-astra"]);
-    expect(publicModelIds).toEqual(["gpt-6-luna", "gpt-6-sol"]);
-    expect(publicModelIds).not.toContain("gpt-6-astra");
+    expect(adminModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol"]);
+    expect(publicModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol"]);
 
-    expect(MODELS.find((model) => model.id === "gpt-6-astra")).toMatchObject({
-      label: "ConsBOT Astra (GPT-6)",
-      adminOnly: true,
-      supportsNoneReasoning: false,
-    });
-    expect(MODELS.find((model) => model.id === "gpt-6-sol")).toMatchObject({
-      label: "ConsBOT Sol (GPT-6)",
+    expect(MODELS.find((model) => model.id === "gpt-6.1-sol")).toMatchObject({
+      label: "ConsBOT Sol (GPT-6.1)",
       adminOnly: false,
       supportsNoneReasoning: true,
     });
@@ -47,16 +41,14 @@ describe("chat settings", () => {
     });
   });
 
-  it("trata o raciocínio none conforme a compatibilidade de cada modelo GPT-6", () => {
-    expect(normalizeReasoningEffortForModel("gpt-6-astra", "none")).toBe("low");
-    expect(normalizeReasoningEffortForModel("gpt-6-astra", "high")).toBe("high");
-    expect(normalizeReasoningEffortForModel("gpt-6-sol", "none")).toBe("none");
+  it("trata o raciocínio none conforme a compatibilidade de cada modelo", () => {
+    expect(normalizeReasoningEffortForModel("gpt-6.1-sol", "none")).toBe("none");
     expect(normalizeReasoningEffortForModel("gpt-6-luna", "none")).toBe("none");
   });
 
-  it("restaura o modelo do perfil quando uma configuração restrita a admin chega ao modo público", () => {
-    const settingsAstra = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6-astra" });
-    expect(settingsAstra.model).toBe("gpt-6-luna");
+  it("restaura o modelo do perfil quando uma configuração customizada chega ao modo público", () => {
+    const settingsPublic = settingsForPublicUser({ ...DEFAULT_SETTINGS, model: "gpt-6.1-sol" });
+    expect(settingsPublic.model).toBe("gpt-6-luna");
   });
 
   it("inicializa novas conversas com o preset padrão de introdutor", () => {

@@ -3,8 +3,7 @@ import { buildCaveatsInstruction, SYSTEM_CAVEATS, type SystemCaveat } from "./pr
 
 export { SYSTEM_CAVEATS, buildCaveatsInstruction, type SystemCaveat };
 
-export const ASTRA_MODEL_ID = "gpt-6-astra" as const;
-export const SOL_V6_MODEL_ID = "gpt-6-sol" as const;
+export const SOL_V6_MODEL_ID = "gpt-6.1-sol" as const;
 export const LUNA_V6_MODEL_ID = "gpt-6-luna" as const;
 
 export const MODELS = [
@@ -17,17 +16,10 @@ export const MODELS = [
   },
   {
     id: SOL_V6_MODEL_ID,
-    label: "ConsBOT Sol (GPT-6)",
-    description: "Versão GPT-6 balanceada com raciocínio avançado para fluxos complexos.",
+    label: "ConsBOT Sol (GPT-6.1)",
+    description: "Versão GPT-6.1 balanceada com raciocínio avançado para fluxos complexos.",
     adminOnly: false,
     supportsNoneReasoning: true,
-  },
-  {
-    id: ASTRA_MODEL_ID,
-    label: "ConsBOT Astra (GPT-6)",
-    description: "Máxima capacidade para tarefas complexas e raciocínio profundo.",
-    adminOnly: true,
-    supportsNoneReasoning: false,
   },
 ] as const;
 

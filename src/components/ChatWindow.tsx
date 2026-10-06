@@ -574,9 +574,9 @@ export function ChatWindow({
     }),
     [isEnglish, onAuditInteraction, settings.vectorStoreId, threadId],
   );
-  const modelGeneration = "GPT-6";
+  const modelGeneration = activeModel?.id.includes("6.1") ? "GPT-6.1" : "GPT-6";
   const modelName = activeModel
-    ? activeModel.label.replace("ConsBOT ", "").replace(" (GPT-6)", "")
+    ? activeModel.label.replace("ConsBOT ", "").replace(/\s*\(GPT-6(?:\.[0-9]+)?\)/, "")
     : "Sol";
   const llmParameters = [
     `${modelGeneration} ${modelName}`,
