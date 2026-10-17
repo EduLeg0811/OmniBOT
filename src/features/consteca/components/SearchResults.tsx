@@ -289,6 +289,23 @@ export function SearchResults({
                 ? ` · ${response.rateLimit.remaining} consultas IA restantes`
                 : ""}
             </p>
+            {response.groups.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">
+                  {response.kind === "smart" ? "Fontes com retorno:" : "Fontes:"}
+                </span>
+                {response.groups.map((group) => (
+                  <span
+                    key={group.sourceId}
+                    title={`${group.sourceLabel}: ${group.shownCount} trechos exibidos`}
+                    className="inline-flex items-center gap-1 rounded bg-secondary/80 px-1.5 py-0.5 text-[9px] font-semibold text-foreground border border-border/50"
+                  >
+                    <span>{group.sourceCode}</span>
+                    <span className="text-muted-foreground font-normal">({group.shownCount})</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2.5">

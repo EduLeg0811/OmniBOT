@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  BookOpen,
   LibraryBig,
   LoaderCircle,
   PanelLeft,
   Search,
   Settings2,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
@@ -550,13 +552,26 @@ export function ConsTecaPage() {
                       origem bibliográfica de cada trecho.
                     </p>
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[10px] font-medium text-muted-foreground">
-                      <span className="rounded-full border border-border bg-card px-3 py-1.5">
-                        {kind === "smart" ? "Busca inteligente" : "Busca literal"}
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 shadow-2xs">
+                        {kind === "smart" ? (
+                          <>
+                            <Sparkles className="size-3 text-amber-500" />
+                            <span>Busca Inteligente (IA Semântica)</span>
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="size-3 text-primary" />
+                            <span>Busca Literal</span>
+                          </>
+                        )}
                       </span>
-                      <span className="rounded-full border border-border bg-card px-3 py-1.5">
-                        {availableSelected.length} fonte
-                        {availableSelected.length === 1 ? "" : "s"} selecionada
-                        {availableSelected.length === 1 ? "" : "s"}
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 shadow-2xs">
+                        <span>
+                          {availableSelected.length} {availableSelected.length === 1 ? "fonte consultada" : "fontes consultadas"}:
+                        </span>
+                        <strong className="text-foreground">
+                          {availableSelected.map((id) => sources.find((s) => s.id === id)?.code || id.toUpperCase()).join(", ") || "nenhuma"}
+                        </strong>
                       </span>
                     </div>
                   </div>
@@ -621,6 +636,71 @@ export function ConsTecaPage() {
             </section>
 
             <div className="shrink-0 bg-background pb-9 pt-3 sm:pb-5">
+              {/* Barra de fontes ativas consultadas */}
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5 px-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                    {kind === "smart" ? (
+                      <Sparkles className="size-3 text-amber-500" />
+                    ) : (
+                      <BookOpen className="size-3 text-primary" />
+                    )}
+                    <span>{kind === "smart" ? "Consultando acervo com IA:" : "Consultando fontes:"}</span>
+                  </span>
+
+                  {availableSelected.length > 0 ? (
+                    availableSelected.map((id) => {
+                      const source = sources.find((s) => s.id === id);
+                      if (!source) return null;
+                      return (
+                        <span
+                          key={id}
+                          title={`${source.label}${source.recordCount ? ` (${source.recordCount.toLocaleString("pt-BR")} reg.)` : ""}`}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold transition-all",
+                            kind === "smart"
+                              ? "border-amber-400/40 bg-amber-50/70 text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200"
+                              : "border-primary/30 bg-primary/10 text-primary",
+                          )}
+                        >
+                          <span>{source.code}</span>
+                          <button
+                            type="button"
+                            aria-label={`Desmarcar ${source.code} da busca`}
+                            onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== id))}
+                            className="ml-0.5 rounded-full p-0.5 text-current/60 hover:bg-black/10 dark:hover:bg-white/10 hover:text-current transition-colors"
+                          >
+                            <X className="size-2.5" />
+                          </button>
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive">
+                      <AlertCircle className="size-3" />
+                      Nenhuma fonte disponível selecionada.
+                    </span>
+                  )}
+
+                  {kind === "smart" && selectedSources.length > availableSelected.length && (
+                    <span
+                      className="text-[10px] text-muted-foreground/80 italic"
+                      title="Fontes selecionadas no modo literal que não possuem índice vetorial foram desconsideradas nesta busca."
+                    >
+                      ({selectedSources.length - availableSelected.length} sem IA ignorada{selectedSources.length - availableSelected.length > 1 ? "s" : ""})
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSidebarTab("sources")}
+                  className="text-[10px] text-primary hover:underline font-medium"
+                >
+                  Alterar fontes
+                </button>
+              </div>
+
               {kind === "smart" && availableSelected.length > 4 ? (
                 <p className="mb-2 rounded-xl border border-amber-300/45 bg-amber-50/65 px-3 py-2 text-[10px] text-amber-900 dark:border-amber-800/45 dark:bg-amber-950/25 dark:text-amber-100">
                   A busca inteligente em muitas fontes pode levar mais tempo.

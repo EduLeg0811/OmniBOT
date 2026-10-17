@@ -160,7 +160,7 @@ export function SearchSettingsPanel({
                 max={100}
                 value={literalLimit}
                 onChange={(e) =>
-                  onLiteralLimitChange(Math.min(100, Math.max(1, Number(e.target.value) || 1)))
+                  onLiteralLimitChange(Math.min(500, Math.max(1, Number(e.target.value) || 1)))
                 }
                 className="h-7 w-16 rounded-md border border-input bg-background px-2 text-right text-xs tabular-nums outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
               />

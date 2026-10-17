@@ -95,7 +95,8 @@ export function SourceFilterPanel({
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Fontes · {selected.filter((id) => available.some((source) => source.id === id)).length}
+          {kind === "smart" ? "Fontes com IA" : "Fontes Literais"} ·{" "}
+          {selected.filter((id) => available.some((source) => source.id === id)).length} de {available.length}
         </p>
         <div className="flex items-center gap-1.5 text-[10px] font-medium">
           <button
@@ -128,14 +129,16 @@ export function SourceFilterPanel({
                 active
                   ? "border-primary/35 bg-primary/[0.07] text-foreground"
                   : "border-transparent bg-transparent text-muted-foreground hover:border-border/70 hover:bg-secondary/45 hover:text-foreground",
-                !enabled && "cursor-not-allowed opacity-40",
+                !enabled && "cursor-not-allowed opacity-45 bg-muted/20",
               )}
               disabled={!enabled}
               key={source.id}
               onClick={() => toggle(source.id)}
               title={
                 !enabled
-                  ? `Fonte indisponível para busca ${kind === "smart" ? "inteligente" : "literal"}`
+                  ? kind === "smart"
+                    ? `${source.label} não possui índice semântico (disponível apenas na busca literal)`
+                    : `${source.label} não possui índice literal`
                   : source.label
               }
               type="button"
@@ -149,15 +152,34 @@ export function SourceFilterPanel({
                 {active ? <Check className="size-3" /> : null}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[11px] font-semibold">{source.code}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-[11px] font-semibold">{source.code}</span>
+                  {kind === "smart" && source.semanticAvailable && (
+                    <span className="inline-flex items-center gap-0.5 rounded px-1 py-0.2 text-[8px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                      <Sparkles className="size-2 text-amber-500" /> Semântica
+                    </span>
+                  )}
+                  {kind === "smart" && !source.semanticAvailable && (
+                    <span className="inline-flex items-center rounded px-1 py-0.2 text-[8px] font-medium bg-muted text-muted-foreground border border-border">
+                      Apenas literal
+                    </span>
+                  )}
+                </span>
                 <span className="block truncate text-[9px] text-muted-foreground">
                   {source.label}
+                  {source.recordCount ? ` · ${source.recordCount.toLocaleString("pt-BR")} reg.` : ""}
                 </span>
               </span>
             </button>
           );
         })}
       </div>
+
+      {kind === "smart" && sources.some((s) => !s.semanticAvailable) && (
+        <p className="mt-2 text-[10px] text-muted-foreground/80 leading-snug rounded-lg border border-border/60 bg-secondary/30 p-2">
+          Fontes marcadas como <em>Apenas literal</em> ainda não possuem embeddings e ficam ativas somente no modo Literal.
+        </p>
+      )}
 
       <div className="mt-4 space-y-2 border-t border-border/65 pt-4">
         <label

@@ -1,6 +1,181 @@
 import type { ReactNode } from "react";
 
-const BOOLEAN_WORDS = new Set(["and", "or", "not", "e", "ou", "nao", "não"]);
+// Termos comuns de ligação da língua portuguesa e operadores lógicos (normalizados sem acento e em minúsculas)
+const STOPWORDS = new Set([
+  // Operadores lógicos
+  "and",
+  "or",
+  "not",
+  "nao",
+
+  // Artigos definidos e indefinidos
+  "a",
+  "as",
+  "o",
+  "os",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+
+  // Preposições essenciais e contrações
+  "ao",
+  "aos",
+  "de",
+  "do",
+  "da",
+  "dos",
+  "das",
+  "em",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "por",
+  "pelo",
+  "pela",
+  "pelos",
+  "pelas",
+  "para",
+  "pra",
+  "pro",
+  "pras",
+  "pros",
+  "com",
+  "sem",
+  "sob",
+  "sobre",
+  "ate",
+  "entre",
+  "contra",
+  "desde",
+  "perante",
+  "tras",
+  "ante",
+  "apos",
+  "num",
+  "numa",
+  "nuns",
+  "numas",
+  "dum",
+  "duma",
+  "duns",
+  "dumas",
+  "dele",
+  "dela",
+  "deles",
+  "delas",
+  "nele",
+  "nela",
+  "neles",
+  "nelas",
+
+  // Conjunções
+  "e",
+  "ou",
+  "nem",
+  "mas",
+  "porem",
+  "contudo",
+  "todavia",
+  "entanto",
+  "portanto",
+  "logo",
+  "pois",
+  "que",
+  "se",
+  "como",
+  "quando",
+  "enquanto",
+  "porque",
+  "ja",
+  "ora",
+
+  // Pronomes retos, oblíquos e possessivos comuns
+  "eu",
+  "tu",
+  "ele",
+  "ela",
+  "eles",
+  "elas",
+  "nos",
+  "vos",
+  "me",
+  "te",
+  "lhe",
+  "lhes",
+  "meu",
+  "minha",
+  "meus",
+  "minhas",
+  "teu",
+  "tua",
+  "teus",
+  "tuas",
+  "seu",
+  "sua",
+  "seus",
+  "suas",
+  "nosso",
+  "nossa",
+  "nossos",
+  "nossas",
+
+  // Pronomes demonstrativos e relativos comuns
+  "este",
+  "esta",
+  "estes",
+  "estas",
+  "isto",
+  "esse",
+  "essa",
+  "esses",
+  "essas",
+  "isso",
+  "aquele",
+  "aquela",
+  "aqueles",
+  "aquelas",
+  "aquilo",
+  "deste",
+  "desta",
+  "destes",
+  "destas",
+  "disto",
+  "desse",
+  "dessa",
+  "desses",
+  "dessas",
+  "disso",
+  "daquele",
+  "daquela",
+  "daqueles",
+  "daquelas",
+  "daquilo",
+  "neste",
+  "nesta",
+  "nestes",
+  "nestas",
+  "nisto",
+  "nesse",
+  "nessa",
+  "nesses",
+  "nessas",
+  "nisso",
+  "naquele",
+  "naquela",
+  "naqueles",
+  "naquelas",
+  "naquilo",
+  "qual",
+  "quais",
+  "quem",
+  "cujo",
+  "cuja",
+  "cujos",
+  "cujas",
+  "onde",
+]);
 
 function normalize(value: string) {
   return value
@@ -9,16 +184,43 @@ function normalize(value: string) {
     .toLocaleLowerCase("pt-BR");
 }
 
+function isWordChar(char: string | undefined): boolean {
+  if (!char) return false;
+  return /[\p{L}\p{N}]/u.test(char);
+}
+
+function expandToWordBoundaries(text: string, start: number, end: number): [number, number] {
+  let expandedStart = Math.max(0, Math.min(start, text.length));
+  let expandedEnd = Math.max(0, Math.min(end, text.length));
+
+  while (expandedStart > 0 && isWordChar(text[expandedStart - 1])) {
+    expandedStart--;
+  }
+
+  while (expandedEnd < text.length && isWordChar(text[expandedEnd])) {
+    expandedEnd++;
+  }
+
+  return [expandedStart, expandedEnd];
+}
+
 // Shared with adapter tests; keeping it beside the renderer avoids duplicating
 // the exact normalization rules used by the visual highlight.
 // eslint-disable-next-line react-refresh/only-export-components
 export function extractHighlightTerms(query: string): string[] {
-  const quoted = [...query.matchAll(/["“”']([^"“”']+)["“”']/g)].map((match) => match[1]!.trim());
+  const quoted = [...query.matchAll(/["“”']([^"“”']+)["“”']/g)]
+    .map((match) => match[1]!.trim())
+    .filter((phrase) => {
+      const normalized = normalize(phrase);
+      return normalized.length >= 2 && !STOPWORDS.has(normalized);
+    });
+
   const words = query
     .replace(/["“”'()]/g, " ")
     .split(/[^\p{L}\p{N}-]+/u)
-    .map((word) => word.trim())
-    .filter((word) => word.length >= 2 && !BOOLEAN_WORDS.has(normalize(word)));
+    .map((word) => word.replace(/^-+|-+$/g, "").trim())
+    .filter((word) => word.length >= 2 && !STOPWORDS.has(normalize(word)));
+
   const unique = new Map<string, string>();
   for (const term of [...quoted, ...words].sort((a, b) => b.length - a.length)) {
     if (term) unique.set(normalize(term), term);
@@ -37,8 +239,10 @@ function highlightedNodes(value: string, terms: string[], keyPrefix: string): Re
     while (cursor < normalizedValue.length) {
       const start = normalizedValue.indexOf(normalizedTerm, cursor);
       if (start < 0) break;
-      ranges.push([start, start + normalizedTerm.length]);
-      cursor = start + Math.max(1, normalizedTerm.length);
+      const end = start + normalizedTerm.length;
+      const [expandedStart, expandedEnd] = expandToWordBoundaries(value, start, end);
+      ranges.push([expandedStart, expandedEnd]);
+      cursor = Math.max(start + 1, expandedEnd);
     }
   }
   if (!ranges.length) return [value];
