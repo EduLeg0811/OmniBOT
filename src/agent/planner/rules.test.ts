@@ -66,7 +66,7 @@ describe("Regras determinísticas para inclusão de Pills (Módulo Agent)", () =
       const actions = matchDeterministicActions(mockContext(query));
       expect(actions).toHaveLength(1);
       expect(actions[0]!.href).toBe(
-        "https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
+        "https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
       );
       expect(actions[0]!.label).toBe("Livros em PDF");
     });
@@ -80,7 +80,7 @@ describe("Regras determinísticas para inclusão de Pills (Módulo Agent)", () =
       const actions = matchDeterministicActions(mockContext(query, true));
       expect(actions).toHaveLength(1);
       expect(actions[0]!.href).toBe(
-        "https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
+        "https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
       );
     });
   });

@@ -13,9 +13,11 @@
  *   1. ChatWindow monta <AgentActions /> e <AgentStatus />;
  *   2. SettingsFields monta <AgentSettingsSection />;
  *   3. chat-settings.ts carrega `agent: AgentSettings`, um bloco opaco;
- *   4. ChatWindow chama triageAgent() antes de enviar: Luna decide uma das
- *      rotas fixas (direta, modelo principal ou corpus). Com o módulo
- *      desligado, devolve o caminho completo sem tocar na classificação.
+ *   4. ChatWindow chama triageAgent() — o Classificador — antes de enviar:
+ *      decide uma das rotas fixas (direta, modelo principal ou corpus). Em
+ *      seguida dispara directAgent() — o Direcionador —, que decide os pills
+ *      de ação sem segurar a resposta. Com o módulo desligado, os dois
+ *      devolvem o caminho completo sem tocar na classificação.
  *
  *  Acrescentar capacidade ou preferência ao agente não deve tocar em nenhum
  *  dos quatro. Se tocar, a fronteira vazou.
@@ -26,7 +28,7 @@
  */
 export { AgentActions } from "@/agent/ui/AgentActions";
 export { AgentStatus } from "@/agent/ui/AgentStatus";
-export { triageAgent, type AgentTriage } from "@/agent/planner/triage";
+export { directAgent, triageAgent, type AgentTriage } from "@/agent/planner/triage";
 export { buildAgentResponseContext } from "@/agent/planner/plan";
 export { AgentSettingsSection } from "@/agent/ui/AgentSettingsSection";
 export {
@@ -62,6 +64,7 @@ export {
 export type { AgentEvent, AgentHost } from "@/agent/host";
 export type {
   AgentAction,
+  AgentDirection,
   AgentAnswerOrigin,
   AgentPlanOrigin,
   AgentResponseMode,

@@ -13,14 +13,17 @@ import {
   ENCYCLOSSAPIENS_SECTIONS,
 } from "@/agent/config";
 import {
-  buildDecisionRequest,
+  buildClassifierRequest,
+  buildDirectorRequest,
   planFromDecisions,
   type DecisionAnswer,
+  type DecisionRequest,
 } from "@/agent/planner/decisions";
 import { agentInstructionsFor, presentationInstructionFor } from "@/agent/planner/prompt";
 import { AGENT_PLANNER_SCHEMA } from "@/agent/planner/schema";
 import { actionsFromMatches, agentTool } from "@/agent/tools/registry";
 import type {
+  AgentDirection,
   AgentContext,
   AgentIntentId,
   AgentMatch,
@@ -222,9 +225,13 @@ async function requestPlan(ctx: AgentContext, key: string): Promise<AgentPlan | 
   return requestResponsesPlan(ctx, key);
 }
 
-async function requestDecisionPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED> {
-  const request = buildDecisionRequest(ctx);
-  const started = performance.now();
+/** Uma chamada ao /api/decisions. Classificador e Direcionador usam a mesma
+ * rota; `action` os separa na telemetria do Main-Server. */
+async function postDecisions(
+  ctx: AgentContext,
+  request: DecisionRequest,
+  action: "classify" | "direct",
+): Promise<DecisionAnswer[] | typeof FAILED> {
   try {
     const response = await fetch(`${ctx.host.apiBase}/api/decisions`, {
       method: "POST",
@@ -237,7 +244,7 @@ async function requestDecisionPlan(ctx: AgentContext): Promise<AgentPlan | typeo
         timeout: (AGENT_DECISIONS_TIMEOUT_MS - 500) / 1000,
         maxRetries: 0,
         app: "consbot-agent",
-        action: "classify",
+        action,
       }),
     });
     // 404/405: Main-Server ainda sem a rota. 403 vindo da OpenAI chega como
@@ -252,11 +259,46 @@ async function requestDecisionPlan(ctx: AgentContext): Promise<AgentPlan | typeo
       return FAILED;
     }
     const result = (await response.json()) as { answers?: DecisionAnswer[] };
-    if (!Array.isArray(result.answers)) return FAILED;
-    return planFromDecisions(result.answers, ctx, Math.round(performance.now() - started));
+    return Array.isArray(result.answers) ? result.answers : FAILED;
   } catch {
     return FAILED;
   }
+}
+
+/** CLASSIFICADOR: só a rota do turno. Os pills ficam para o Direcionador. */
+async function requestDecisionPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED> {
+  const started = performance.now();
+  const answers = await postDecisions(ctx, buildClassifierRequest(ctx), "classify");
+  if (answers === FAILED) return FAILED;
+  return {
+    ...planFromDecisions(answers, ctx, Math.round(performance.now() - started)),
+    engine: "decisions",
+    decisionAnswers: answers,
+  };
+}
+
+/** DIRECIONADOR: os pills de ação do turno, numa chamada própria.
+ *
+ * Interpreta as respostas dele junto com as do Classificador, porque regras
+ * como «pedido explícito de busca fica com a busca» dependem da forma do
+ * turno. Falha devolve null: o turno segue sem pills de LLM, só com os
+ * determinísticos. */
+export async function requestDirection(
+  ctx: AgentContext,
+  classified: Pick<AgentPlan, "decisionAnswers">,
+): Promise<AgentDirection | null> {
+  const started = performance.now();
+  const answers = await postDecisions(ctx, buildDirectorRequest(ctx), "direct");
+  if (answers === FAILED) return null;
+  const durationMs = Math.round(performance.now() - started);
+  const merged = [...((classified.decisionAnswers ?? []) as DecisionAnswer[]), ...answers];
+  const plan = planFromDecisions(merged, ctx, durationMs);
+  return {
+    actions: plan.actions.filter((action) => action.id !== "list_sources"),
+    reason: plan.reason,
+    durationMs,
+    directorResponse: JSON.stringify(answers),
+  };
 }
 
 async function requestResponsesPlan(
@@ -297,12 +339,15 @@ async function requestResponsesPlan(
     if (!response.ok) return FAILED;
     const result = (await response.json()) as { content?: string };
     if (!result.content) return FAILED;
-    return normalizePlannerPayload(
-      JSON.parse(result.content) as PlannerPayload,
-      ctx,
-      Math.round(performance.now() - started),
-      result.content,
-    );
+    return {
+      ...normalizePlannerPayload(
+        JSON.parse(result.content) as PlannerPayload,
+        ctx,
+        Math.round(performance.now() - started),
+        result.content,
+      ),
+      engine: "responses",
+    };
   } catch {
     invalidate(key);
     return FAILED;

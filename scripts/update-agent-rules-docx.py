@@ -103,14 +103,16 @@ set_cell_text(box.cell(0, 0), "Objetivo: oferecer ações contextuais úteis sem
 doc.add_paragraph()
 doc.add_heading("Princípios", level=1)
 for item in [
-    "O classificador (porteiro) é um questionário fechado respondido pelo gpt-6-luna na Decisions API (POST /v1/decisions). Ele não escreve texto: responde predicados (probabilidade) e escolhas entre opções dadas.",
+    "O turno passa por dois blocos de perguntas fechadas na Decisions API (POST /v1/decisions, gpt-6-luna), que não escreve texto: responde predicados (probabilidade) e escolhas entre opções dadas.",
+    "CLASSIFICADOR, antes da resposta: decide só a rota do turno. O envio espera apenas por ele.",
+    "DIRECIONADOR, disparado logo depois: decide os pills de ação numa chamada própria, sem segurar a resposta. Os pills aparecem quando a resposta termina. Usa a pergunta, não o texto respondido.",
     "Necessidade de resposta e relevância dos pills são decisões independentes. Um pill nunca substitui a resposta.",
     "A confiança de cada ação é a probabilidade do modelo, não um número escrito por ele. Os limiares vêm da suíte real.",
     "O termo de busca é sempre um trecho da mensagem do usuário: não há como inventar grafia nem concatenar palavras da resposta.",
     "Respostas sem o modelo principal (saudação, agradecimento, despedida, fontes carregadas, corpus) usam textos de catálogo.",
     "No Clássico, corpus é proibido.",
     "Qualquer falha cai no classificador antigo (Responses API) e, se ele também falhar, em full.",
-    "Regras determinísticas locais (periódicos, livros em PDF) só acrescentam pills; nunca suprimem a resposta.",
+    "Regras determinísticas locais (periódicos, livros em PDF) são só rede de segurança: entram quando o Direcionador não responde. No log real elas geravam 35 pills indevidos como complemento.",
 ]:
     bullet(item)
 
@@ -121,20 +123,20 @@ table(["Parâmetro", "Contrato"], [
     ("Rota", "Frontend → Main-Server POST /api/decisions → OpenAI POST /v1/decisions"),
     ("Modelo", "gpt-6-luna (único aceito pela Decisions API)"),
     ("Entrada", "Mensagem developer: contexto do ConsBOT + prompt do admin. Mensagem user: pergunta anterior ≤ 500, resposta anterior ≤ 900, mensagem atual."),
-    ("Perguntas", "15 por turno (16 em Citações), numa única chamada."),
+    ("Blocos", "Classificador: forma, lista_fontes (+ trechos_brutos em Citações). Direcionador: as demais perguntas, só nos turnos que vão ao modelo principal ou ao corpus."),
     ("Timeout", "4.000 ms no navegador; 3,5 s no servidor; sem retry."),
-    ("Cache", "prompt_cache_key agent-decisions-v1-<apresentação>"),
-    ("Custo", "≈ 4.500 tokens de entrada por turno, US$ 0,10 por milhão; saída não é cobrada."),
-    ("Latência medida", "p50 0,27 s · p90 0,40 s (antes: 2,9 s · 15,5 s)"),
+    ("Cache", "prompt_cache_key agent-classifier-v1-<apresentação> e agent-director-v1-<apresentação>"),
+    ("Custo", "≈ 800 tokens no Classificador e ≈ 6.800 no Direcionador, US$ 0,10 por milhão; saída não é cobrada."),
+    ("Latência medida", "Classificador (o que segura a resposta): p50 0,26 s. Direcionador, fora do caminho da resposta: p50 0,29 s. Antes da migração: 2,9 s · 15,5 s."),
     ("Cota", "/api/decisions não consome cota nem sofre o override de modelo por app do /api/llm."),
 ], [3.6, 12.8])
 
-doc.add_heading("Questionário", level=2)
+doc.add_heading("Questionário (forma, lista_fontes e trechos_brutos são do Classificador; as demais, do Direcionador)", level=2)
 table(["Pergunta", "Tipo", "Decide"], [
     ("forma", "choice (12)", "Forma do turno: conceito, continuação, colagem, pergunta, procedência, busca literal, meta, fontes, saudação, agradecimento, despedida, outro."),
     ("busca_termo", "predicate", "Busca/localização explícita de termo, fonte de citação, ou listagem de verbetes por título/autor/especialidade."),
     ("escopo_busca", "choice (3)", "ambos (padrão) · livros · verbetes."),
-    ("campo_verbete", "choice (4)", "texto · titulo · autor · especialidade."),
+    ("campo_verbete", "choice (5)", "texto · titulo · autor · especialidade · definologia."),
     ("obra", "choice (16)", "Obra do catálogo nomeada pelo usuário, ou nenhum."),
     ("busca_conscienciograma", "predicate", "Busca explícita no Conscienciograma."),
     ("bibliografia_livro", "predicate", "Referência de livro (citar, BEE, nome de obra sozinho)."),
@@ -218,7 +220,7 @@ table(["Intent", "Política", "Pergunta que decide"], [
     ("bibliomancia", "fulfills_explicit_action", "bibliomancia"),
     ("encyclossapiens", "complementary", "encyclossapiens"),
     ("catalogo_ccci", "complementary", "destino_ccci"),
-    ("open_resource", "fulfills_explicit_action", "recurso (+ regras determinísticas)"),
+    ("open_resource", "fulfills_explicit_action", "recurso (regras determinísticas só no fallback)"),
     ("list_sources", "local", "lista_fontes"),
 ], [4.1, 4.4, 7.9])
 doc.add_paragraph("ConsGPT e ConsLM só aparecem quando o usuário os nomeia. LexiCons sempre abre em Cosmovisão.")
@@ -226,32 +228,41 @@ doc.add_paragraph("ConsGPT e ConsLM só aparecem quando o usuário os nomeia. Le
 doc.add_heading("Contratos de deep link", level=2)
 table(["Serviço", "Contrato"], [
     ("Livros", "index_search_book.html?q=<termo>&books=<book_code>"),
-    ("Verbetes", "index_search_verb.html?q=<termo>&field=<texto|titulo|autor|especialidade>"),
+    ("Verbetes", "index_search_verb.html?q=<termo>&fields=<todos|titulo|verbetografo|especialidade|definologia> (texto → todos, autor → verbetografo)"),
     ("Conscienciograma", "index_search_ccg.html?q=<termo>"),
     ("Bibliografia de livros", "index_biblio_wv.html?sigla=<sigla>&style=<bee|simples>"),
-    ("Bibliografia de verbetes", "index_biblio_verbete.html?q=<títulos>&style=<bee|simples>"),
+    ("Bibliografia de verbetes", "index_biblio_verbete.html?verbetes=<títulos>&style=<bee|simples>"),
     ("Bibliomancia", "index_mancia.html?autostart=1"),
     ("LexiCons", "?q=<termo>&autostart=1; sem parâmetro de modo"),
 ], [4.6, 11.8])
 
 doc.add_heading("Identificadores de obras", level=2)
-table(["Main-Server", "Cons-IA", "Sigla bibliográfica", "Obra"], [
-    ("TEAT", "TEAT", "TEAT", "200 Teáticas"),
+doc.add_paragraph("Os dois destinos do Cons-IA aceitam conjuntos diferentes de obras e descartam em silêncio o que não conhecem (conferido no código das páginas em 2026-10-19). «—» = a obra não existe naquele destino.")
+table(["Id", "Busca em livros", "Sigla da bibliografia", "Obra"], [
+    ("TEAT", "TEAT", "T200", "200 Teáticas"),
     ("EXP", "EXP", "EXP", "700 Experimentos"),
     ("DAC", "DAC", "DAC", "Dicionário de Argumentos"),
     ("HSP", "HSP", "HSP", "Homo sapiens pacificus"),
     ("HSR", "HSR", "HSR", "Homo sapiens reurbanisatus"),
-    ("LO", "LO", "LO", "Léxico de Ortopensatas"),
+    ("LO", "LO", "LO2", "Léxico de Ortopensatas (2ª ed.)"),
     ("MDE", "MDE", "MDE", "Manual da Dupla Evolutiva"),
     ("MP", "MP", "MP", "Manual da Proéxis"),
     ("TNP", "TNP", "TNP", "Manual da Tenepes"),
     ("PROJ", "PROJ", "PROJ", "Projeciologia"),
     ("TC", "TC", "TC", "Temas da Conscienciologia"),
-    ("MINI_ARLINDO", "MINI_ARLINDO", "—", "Minitertúlia — Arlindo"),
     ("PROJ1986", "PROJ1986", "—", "Projeciologia (1986)"),
-    ("QUEST", "QUEST", "—", "Questões Mini"),
     ("ZEFIRO", "ZEFIRO", "—", "Zéfiro"),
-], [3.2, 3.2, 3.4, 6.6])
+    ("MINI_ARLINDO", "—", "—", "Minitertúlia — Arlindo"),
+    ("QUEST", "—", "—", "Questões Mini"),
+    ("PC", "—", "PC", "Projeções da Consciência"),
+    ("CCG", "—", "CCG", "Conscienciograma"),
+    ("T100", "—", "T100", "100 Testes da Conscienciometria"),
+    ("NE", "—", "NE", "Nossa Evolução"),
+    ("MRC", "—", "MRC", "Manual de Redação da Conscienciologia"),
+    ("MMT", "—", "MMT", "Manual dos Megapensenes Trivocabulares"),
+    ("DNC", "—", "DNC", "Dicionário de Neologismos"),
+    ("EC10", "—", "EC10", "Enciclopédia da Conscienciologia (10ª ed.)"),
+], [2.6, 3.0, 3.6, 7.2])
 
 doc.add_page_break()
 doc.add_heading("4. Catálogo CCCI", level=1)

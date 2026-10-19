@@ -69,7 +69,7 @@ async function loadPlanner() {
       'export { AGENT_TOOLS } from "@/agent/tools/registry";',
       'export { actionsFromMatches } from "@/agent/tools/registry";',
       'export { normalizePlannerPayload } from "@/agent/planner/plan";',
-      'export { buildDecisionRequest, buildActionDecisionRequest, planFromDecisions } from "@/agent/planner/decisions";',
+      'export { buildClassifierRequest, buildDirectorRequest, buildActionDecisionRequest, planFromDecisions } from "@/agent/planner/decisions";',
       'export { DEFAULT_SETTINGS, buildSystemPrompt, verbosityForDepth } from "@/lib/chat-settings";',
       'export { AGENT_CLASSIFIER_REASONING, AGENT_CONFIDENCE_MEDIUM } from "@/agent/config";',
     ].join("\n"),
@@ -121,10 +121,7 @@ function suiteContext(question) {
   };
 }
 
-/** Mesmo caminho de `requestDecisionPlan` em planner/plan.ts. */
-async function classifyDecisions(planner, question) {
-  const context = suiteContext(question);
-  const request = planner.buildDecisionRequest(context);
+async function postDecisions(request, action) {
   const started = Date.now();
   const response = await fetch(`${API_BASE}/api/decisions`, {
     method: "POST",
@@ -134,20 +131,34 @@ async function classifyDecisions(planner, question) {
       questions: request.questions,
       promptCacheKey: request.promptCacheKey,
       app: "consbot-agent",
-      action: "suite",
+      action,
     }),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status} ${await response.text()}`);
   const body = await response.json();
-  const ms = Date.now() - started;
-  const plan = planner.planFromDecisions(body.answers, context, ms);
+  return { answers: body.answers, ms: Date.now() - started, tokens: body.usage?.input_tokens ?? 0 };
+}
+
+/** Mesmo caminho do app: Classificador (rota) e, nos turnos que vão ao modelo
+ * principal, o Direcionador (pills). As respostas dos dois blocos são
+ * interpretadas juntas, como em requestDirection de planner/plan.ts. */
+async function classifyDecisions(planner, question) {
+  const context = suiteContext(question);
+  const classifier = await postDecisions(planner.buildClassifierRequest(context), "suite-classify");
+  const route = planner.planFromDecisions(classifier.answers, context, classifier.ms);
+  let plan = route;
+  let director = null;
+  if (route.responseMode !== "direct") {
+    director = await postDecisions(planner.buildDirectorRequest(context), "suite-direct");
+    plan = planner.planFromDecisions([...classifier.answers, ...director.answers], context);
+  }
   return {
     intents: plan.actions.map((a) => a.id),
-    mode: plan.responseMode,
-    proposedRoute: plan.responseMode,
-    confidence: plan.responseConfidence,
+    mode: route.responseMode,
+    proposedRoute: route.responseMode,
+    confidence: route.responseConfidence,
     reason: plan.reason,
-    answer: plan.answer,
+    answer: route.answer,
     args: plan.actions.map((a) => ({
       term: a.meta?.term ?? "",
       field: a.meta?.field ?? "",
@@ -156,8 +167,10 @@ async function classifyDecisions(planner, question) {
       resource: a.meta?.resource ?? "",
     })),
     urls: plan.actions.map((a) => a.href),
-    ms,
-    tokens: body.usage?.input_tokens ?? 0,
+    // Latência que segura a resposta: só a do Classificador.
+    ms: classifier.ms,
+    directorMs: director?.ms,
+    tokens: classifier.tokens + (director?.tokens ?? 0),
   };
 }
 
@@ -460,8 +473,18 @@ async function main() {
   const at = (q) => timings[Math.min(timings.length - 1, Math.floor(q * timings.length))];
   if (timings.length)
     console.log(
-      `
-Latência (${ENGINE}): p50 ${at(0.5)} ms · p90 ${at(0.9)} ms · máx ${timings.at(-1)} ms`,
+      `\nLatência (${ENGINE}): p50 ${at(0.5)} ms · p90 ${at(0.9)} ms · máx ${timings.at(-1)} ms`,
+    );
+  const directorTimings = rows
+    .flatMap((r) => r.runs)
+    .map((run) => run.directorMs)
+    .filter((ms) => typeof ms === "number")
+    .sort((a, b) => a - b);
+  const atD = (q) =>
+    directorTimings[Math.min(directorTimings.length - 1, Math.floor(q * directorTimings.length))];
+  if (directorTimings.length)
+    console.log(
+      `Direcionador (fora do caminho da resposta): p50 ${atD(0.5)} ms · p90 ${atD(0.9)} ms`,
     );
   const tokens = rows.flatMap((r) => r.runs).map((run) => run.tokens ?? 0);
   if (tokens.length)

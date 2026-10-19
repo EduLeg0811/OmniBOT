@@ -1,5 +1,7 @@
 import {
   AGENT_BOOKS,
+  agentBook,
+  agentBookByName,
   AGENT_DECISION_CATALOG_MIN,
   AGENT_DECISION_DIRECT_MIN,
   AGENT_DECISION_THRESHOLD,
@@ -145,11 +147,18 @@ const EDGE_STOPWORDS = new Set(
     "encontrar encontra ache achar acha pesquise pesquisar pesquisa liste listar lista mostre " +
     "mostrar mostra abra abrir abre sorteie sortear explique explicar explica defina definir " +
     "resuma resumir cite citar diga dizer quero gostaria pode poderia favor me de dê " +
+    "transcreva transcrever verifique verificar consulte consultar indique indicar traga trazer " +
+    "passe passar encontrar procurando levantamento artigo artigos revista revistas " +
+    "doc documento documentos origem " +
     "aparece aparecem aparecer citacoes citacao ocorrencias ocorrencia " +
     "escreveu escreveram escrito escritos escrita escrever autor autora autores autoria " +
     "relaciona relacionam relacionado relacionados relacionada relacionadas " +
     "termo termos palavra palavras expressao expressoes livro livros obra obras verbete verbetes " +
     "texto textos tema assunto conceito conceitos " +
+    "fonte fontes referencia referencias bibliografia bibliografias bibliografica bibliograficas " +
+    "trecho trechos questao questoes pergunta perguntas pagina paginas capitulo capitulos " +
+    "material materiais informacao informacoes conteudo acervo acervos definicao " +
+    "isso disso nisso desse dessa deste desta nesse nessa neste nesta aqui ai " +
     "the an of in on at to for from with by about and or what which who where how is are " +
     "find search look locate show list open word words term terms book books entry entries " +
     "please me my"
@@ -158,12 +167,13 @@ const EDGE_STOPWORDS = new Set(
     .map(fold),
 );
 
-/** Nomes de fontes e lugares de busca. Nunca são o termo: «liderança no
+/** Nomes de fontes, lugares de busca e da própria ciência («Conscienciologia»:
+ * no acervo, ela aparece em toda parte). Nunca são o termo: «liderança no
  * Conscienciograma» busca «liderança», e «quem mais escreveu verbetes na
  * Enciclopédia» não tem termo nenhum. Entre aspas, o usuário delimitou de
  * propósito, e o candidato vale. */
 const LOCATION_WORDS = new Set(
-  "conscienciograma enciclopedia encyclossapiens verbetoteca lexicons icge ccci editares".split(
+  "conscienciograma enciclopedia encyclossapiens verbetoteca lexicons icge ccci editares conscienciologia conscienciologica conscienciologicas conscienciologico conscienciologicos".split(
     " ",
   ),
 );
@@ -263,9 +273,9 @@ function questions(ctx: AgentContext, candidates: string[]): DecisionQuestion[] 
       type: "predicate",
       name: "busca_termo",
       instructions: join(
-        "O usuário pede EXPLICITAMENTE para buscar, localizar, procurar, citar trechos ou encontrar onde aparece uma palavra, expressão ou citação nos textos (livros ou verbetes), ou quer a fonte/obra exata de uma frase citada?",
-        "Também verdadeiro quando quer LISTAR ou identificar verbetes por título, autor ou especialidade («que verbetes são da especialidade X», «que verbetes fulano escreveu», «quem é o autor do verbete X»).",
-        "Falso para perguntas conceituais («o que é», «explique», «como praticar»), para discutir, resumir ou comparar o conteúdo de um verbete ou livro, para busca no Conscienciograma, para pedido de referência bibliográfica, para verbetes RELACIONADOS a um tema e para rankings ou estatísticas de autores.",
+        "O usuário quer saber ONDE algo está nos textos (livros ou verbetes)? Verdadeiro quando pede para buscar, localizar, procurar, citar trechos ou encontrar onde aparece uma palavra, expressão ou citação; quando pede as fontes, as referências ou onde está definido um conceito («dê as referências», «qual a fonte», «em que livro/página», «onde encontro material sobre X»); quando pergunta se existe verbete ou obra sobre um tema; e quando quer LISTAR verbetes sobre um tema ou por título, autor ou especialidade («verbetes sobre X», «que verbetes fulano escreveu», «quem é o autor do verbete X»).",
+        "Querer estudar ou «pesquisar mais» um assunto não é pedir fonte: é pergunta conceitual.",
+        "Falso para perguntas conceituais sem pedido de fonte («o que é», «explique», «como praticar»), para discutir, resumir ou comparar o conteúdo de um verbete ou livro já nomeado, para busca no Conscienciograma, para pedido de referência bibliográfica formatada (citar, BEE), para verbetes que SE RELACIONAM, afins ou correlatos a um tema ou verbete (isso é a remissiologia, mesmo quando a mensagem diz «tema»), e para rankings ou estatísticas de autores.",
       ),
     },
     {
@@ -286,9 +296,18 @@ function questions(ctx: AgentContext, candidates: string[]): DecisionQuestion[] 
     {
       type: "choice",
       name: "campo_verbete",
-      instructions:
-        "Numa busca em verbetes, em que campo procurar o termo? texto é o padrão. titulo quando o termo é o título de um verbete (inclusive «quem é o autor do verbete X»: busca-se pelo título X); autor quando quer os verbetes de uma pessoa; especialidade quando quer os verbetes de uma especialidade.",
-      choices: AGENT_VERBETE_FIELDS.map((value) => ({ value })),
+      instructions: "Numa busca em verbetes, em que campo procurar o termo?",
+      choices: AGENT_VERBETE_FIELDS.map((value) => ({
+        value,
+        description: {
+          texto: "O padrão: o termo em qualquer parte do verbete.",
+          titulo:
+            "O termo é o título de um verbete (inclusive «quem é o autor do verbete X»: busca-se pelo título X).",
+          autor: "Quer os verbetes escritos por uma pessoa.",
+          especialidade: "Quer os verbetes de uma especialidade.",
+          definologia: "Quer a DEFINIÇÃO de um termo tal como os verbetes a dão.",
+        }[value],
+      })),
     },
     {
       type: "choice",
@@ -312,19 +331,19 @@ function questions(ctx: AgentContext, candidates: string[]): DecisionQuestion[] 
       type: "predicate",
       name: "bibliografia_livro",
       instructions:
-        "O usuário pede a referência bibliográfica de um LIVRO: citar, como citar, bibliografia, referência, BEE, ou a mensagem é apenas o nome de uma obra (sem verbo), pedindo a referência dela? Falso quando pergunta o conteúdo do livro, onde encontrá-lo ou pede para buscar algo dentro dele.",
+        "O usuário pede a referência bibliográfica formatada de LIVROS (citar, como citar, BEE, bibliografia), de uma obra nomeada ou de livros em geral («citar o Léxico de Ortopensatas», «como citar os livros do Waldo», «bibliografia das obras»), ou a mensagem é apenas o nome de uma obra, sem verbo? Falso quando pergunta o conteúdo do livro, onde encontrá-lo, pede para buscar algo dentro dele, ou pede a referência de um CONCEITO ou tema (isso é a referência do verbete).",
     },
     {
       type: "predicate",
       name: "bibliografia_verbete",
       instructions:
-        "O usuário pede a referência bibliográfica de VERBETES da Enciclopédia (citar ou como citar um verbete, bibliografia dos verbetes)? Falso quando pede o conteúdo ou o resumo de um verbete.",
+        "O usuário pede a referência bibliográfica de um VERBETE da Enciclopédia (citar ou como citar um verbete, BEE de um verbete, bibliografia dos verbetes) ou a referência bibliográfica de um CONCEITO ou tema da Conscienciologia («definição de X e referência bibliográfica», «bibliografia de X»), que é a do verbete homônimo? Falso quando pede o conteúdo ou o resumo de um verbete, e quando a referência pedida é de LIVROS.",
     },
     {
       type: "predicate",
       name: "lexicons",
       instructions: join(
-        "O usuário pede consulta lexical de uma palavra da língua comum: significado de dicionário, etimologia, sinônimos, antônimos, áreas de uso ou desambiguação entre palavras comuns?",
+        "O usuário pede EXPLICITAMENTE um aspecto lexical de uma palavra da língua comum: etimologia, sinônimos, antônimos, grafia correta, significado DA PALAVRA («o que significa a palavra X», «o que significa “X”»), áreas de uso ou desambiguação entre palavras? «O que é X», «defina X» ou X sozinho são perguntas conceituais: falso.",
         "Falso para neologismos e conceitos da Conscienciologia (Cosmoética, Pensene, Tenepes, Holopensene, Proéxis…): esses pedem explicação conceitual. Falso quando «léxico» é o nome de uma obra (Léxico de Ortopensatas) ou quando o pedido é buscar um termo nos textos.",
       ),
     },
@@ -338,7 +357,7 @@ function questions(ctx: AgentContext, candidates: string[]): DecisionQuestion[] 
       type: "predicate",
       name: "bibliomancia",
       instructions:
-        "O usuário pede uma ortopensata ao acaso (sortear, aleatória, uma qualquer) ou pede Bibliomancia? Falso quando pede explicação de uma ortopensata específica.",
+        "A mensagem pede para sortear uma ortopensata, pede uma ortopensata aleatória ou qualquer, ou pede Bibliomancia? Exige que a mensagem fale de ortopensata, pensata ou Bibliomancia. Falso quando quer ortopensatas sobre um tema (isso é busca) ou a explicação de uma ortopensata.",
     },
     {
       type: "choice",
@@ -361,7 +380,7 @@ function questions(ctx: AgentContext, candidates: string[]): DecisionQuestion[] 
       instructions: join(
         `Algum destino sobre ${CCCI_DOMAINS[domain]} atende ao que o usuário quer FAZER: navegar, assistir, participar, consultar uma listagem, uma ferramenta ou um painel?`,
         "Escolha o destino cuja descrição corresponde ao pedido. Quando a pergunta é sobre uma coisa que tem página própria nesta área (uma atividade, prova, instituição, ferramenta, coleção ou obra), o destino se aplica mesmo em perguntas como «o que é», «existe» ou «onde encontro».",
-        "nenhum quando a pergunta é sobre um conceito ou tema da Conscienciologia que a resposta explica sozinha, quando o usuário quer localizar uma palavra dentro dos textos, quando pede uma referência bibliográfica e quando nenhum destino desta área é específico para o pedido.",
+        "nenhum quando a pergunta é sobre um conceito ou tema da Conscienciologia que a resposta explica sozinha, quando o usuário quer localizar uma palavra dentro dos textos, quando pede uma referência bibliográfica, quando pede ao próprio assistente para produzir algo (escrever, criar, desenhar, revisar, montar um curso, um convite ou um slide) e quando nenhum destino desta área é específico para o pedido.",
       ),
       choices: [
         { value: NONE, description: "Nenhum destino desta área atende ao pedido." },
@@ -468,6 +487,35 @@ export function buildDecisionRequest(ctx: AgentContext): DecisionRequest {
     questions: questions(ctx, candidates),
     promptCacheKey: `agent-decisions-v1-${ctx.settings.presentation}`,
     termCandidates: candidates,
+  };
+}
+
+/** CLASSIFICADOR — o primeiro bloco, antes da resposta. Só decide a rota do
+ * turno (forma, fontes carregadas, trechos brutos): é o que o envio precisa
+ * saber para escolher entre o modelo principal, a resposta direta e o corpus.
+ * Quanto menor, mais cedo a resposta parte. */
+export function buildClassifierRequest(ctx: AgentContext): DecisionRequest {
+  const base = buildDecisionRequest(ctx);
+  return {
+    ...base,
+    questions: base.questions.filter((question) => ROUTE_QUESTIONS.has(question.name)),
+    promptCacheKey: `agent-classifier-v1-${ctx.settings.presentation}`,
+    termCandidates: [],
+  };
+}
+
+/** DIRECIONADOR — o segundo bloco: os pills de ação. Disparado depois que o
+ * Classificador decidiu, sem bloquear a resposta; os pills aparecem quando a
+ * resposta termina. Usa a mesma entrada do Classificador (a pergunta, não o
+ * texto respondido: medido em 2026-10-19, o texto respondido piorou os pills).
+ * As respostas dos dois blocos são interpretadas juntas por planFromDecisions,
+ * porque algumas regras dos pills dependem da forma do turno. */
+export function buildDirectorRequest(ctx: AgentContext): DecisionRequest {
+  const base = buildDecisionRequest(ctx);
+  return {
+    ...base,
+    questions: base.questions.filter((question) => !ROUTE_QUESTIONS.has(question.name)),
+    promptCacheKey: `agent-director-v1-${ctx.settings.presentation}`,
   };
 }
 
@@ -580,7 +628,23 @@ export function planFromDecisions(
   const citeBook = p("bibliografia_livro");
   // Busca com o Conscienciograma como lugar é só no Conscienciograma, e «Citar
   // o Léxico» é referência, não busca: vence a leitura mais provável.
-  const searchFired = search >= T && Boolean(requiredTerm) && ccg < T && search >= citeBook;
+  // O título de uma obra não é termo de busca: buscar «Léxico de Ortopensatas»
+  // dentro dos livros não acha nada útil. Quem nomeia só a obra quer a obra.
+  const termIsBook = fold(agentBookByName(requiredTerm)?.label ?? "").startsWith(
+    fold(requiredTerm),
+  );
+  // Conceito nu (só o termo, sem verbo) pede explicação, não busca — ficha 1.
+  // A busca ainda vale nele quando é quase certa. Pergunta sobre o próprio
+  // assistente ou turno social nunca pede busca.
+  const searchMin = shape === "conceito" ? 0.9 : T;
+  const noSearchShape = shape === "meta_bot" || Boolean(SOCIAL[shape]);
+  const searchFired =
+    search >= searchMin &&
+    !noSearchShape &&
+    Boolean(requiredTerm) &&
+    !termIsBook &&
+    ccg < T &&
+    search >= citeBook;
   const scope = choices.get("escopo_busca")?.value ?? "ambos";
   // Obra nomeada restringe a busca aos livros, a não ser que o usuário peça os
   // verbetes explicitamente.
@@ -598,17 +662,28 @@ export function planFromDecisions(
   );
   if (ccg >= T && requiredTerm)
     add({ intent: "search_conscienciograma", confidence: ccg, term: requiredTerm });
-  if (citeBook >= T)
+  // Bibliografia de livros: com a obra resolvida, a referência dela; sem obra
+  // («como citar os livros do Waldo»), o módulo abre na escolha da obra. A
+  // referência de um CONCEITO é decidida pela pergunta bibliografia_verbete.
+  const citedBook = agentBook(bookId) ?? agentBookByName(optionalTerm);
+  const citeEntry = p("bibliografia_verbete");
+  // Referência de livro ou de verbete/conceito: as duas perguntas disputam o
+  // mesmo pedido, e fica a mais provável.
+  if (citeBook >= T && citeBook > citeEntry) {
     add({
       intent: "bibliografia_livros",
       confidence: citeBook,
-      term: optionalTerm,
-      book: bookId,
+      term: citedBook?.bibliographySigla ? optionalTerm : "",
+      book: citedBook?.bibliographySigla ? citedBook.mainServerSourceId : "",
     });
-  if (p("bibliografia_verbete") >= T)
+    trace.push(
+      `biblio_livro=${round(citeBook)}${citedBook ? `:${citedBook.mainServerSourceId}` : ""}`,
+    );
+  }
+  if (citeEntry >= T && citeEntry >= citeBook)
     add({
       intent: "bibliografia_verbetes",
-      confidence: p("bibliografia_verbete"),
+      confidence: citeEntry,
       term: optionalTerm,
     });
   if (p("lexicons") >= T && requiredTerm)

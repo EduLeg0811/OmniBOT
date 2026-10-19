@@ -215,3 +215,37 @@ Suíte (130 casos, 3 execuções): 130 estáveis, 0 ações indevidas em 111
 execuções, p50 263 ms; ~7.400 tokens por turno. Controle novo `controle3`
 (12 frases escritas depois das regras, não usadas para calibrar): 11/12; a
 falha é limítrofe («Explique o que é um Colégio Invisível» ficou sem destino).
+
+## 8. Classificador e Direcionador em blocos separados (2026-10-19)
+
+O questionário virou duas chamadas ao `/api/decisions`, por organização do
+fluxo:
+
+- **Classificador** (`triageAgent`, `buildClassifierRequest`): antes da
+  resposta, só a rota — `forma`, `lista_fontes` e, em Citações,
+  `trechos_brutos`. O envio espera apenas por ele.
+- **Direcionador** (`directAgent`, `buildDirectorRequest`): disparado logo
+  depois, decide os pills de ação sem segurar a resposta; os pills entram no
+  plano do turno quando chegam e aparecem com a resposta terminada. Usa a
+  pergunta, não o texto respondido. As respostas dos dois blocos são
+  interpretadas juntas (regras como «busca explícita fica com a busca»
+  dependem da forma). Turnos diretos não chamam o Direcionador. No fallback
+  pela Responses API a chamada única continua trazendo rota e pills.
+
+Suíte (142 casos, 3 execuções): 141 estáveis, 0 ações indevidas em 114
+execuções — mesmo resultado da chamada única. Classificador p50 255 ms (o
+piso da API fica perto de 0,25 s mesmo com 2 perguntas); Direcionador p50
+286 ms, fora do caminho da resposta. Conferido no app: «Quais os horários das
+dinâmicas parapsíquicas?» gerou `classify` (2 perguntas, 795 tokens) e
+`direct` (20 perguntas, 6.766 tokens), com o pill «Dinâmicas parapsíquicas»
+ao fim da resposta.
+
+## 9. Auditoria do Direcionador com o log real (2026-10-19)
+
+Detalhes em `docs/AUDITORIA_DIRECIONADOR.md`. Resumo: três parâmetros de link do
+Cons-IA estavam errados (campos de verbete, siglas de bibliografia, obras sem
+busca) e o link do Drive dependia de conta. Também foram corrigidas as
+perguntas de fonte/referência, LexiCons, bibliografia, sorteio e termo. As
+regras determinísticas viraram só fallback. Sobre 2.040 perguntas reais, as
+perguntas de fonte com pill subiram de 207 para 236, LexiCons caiu de 76 para
+34 e Periódicos de 44 para 11. Suíte: 140/142.

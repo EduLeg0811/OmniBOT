@@ -43,6 +43,7 @@ import {
   AgentActions,
   AgentStatus,
   buildAgentResponseContext,
+  directAgent,
   executeAgentAction,
   withoutRepeatedActions,
   sourceListAnswer,
@@ -61,6 +62,7 @@ import {
   type AgentFollowUpPayload,
   type AgentAction,
   type AgentHost,
+  type AgentDirection,
   type AgentTriage,
 } from "@/agent";
 import { fetchVectorStoreFiles } from "@/lib/vector-store-files";
@@ -1138,17 +1140,20 @@ export function ChatWindow({
           host: agentHost,
           threadId,
         };
-        // A triagem custa segundos — medido em 411 perguntas: p50 2,6 s, p90
-        // 4,5 s. Bloquear o turno inteiro nesse tempo era o que deixava a tela
-        // parada depois do envio. Aqui se espera só o orçamento: dentro dele
-        // vale o caminho completo, com `direct` respondendo sem o modelo
-        // principal; fora dele o turno segue e os pills entram quando chegarem.
+        // Dois blocos de Decisions. O CLASSIFICADOR decide só a rota, e o envio
+        // espera por ele dentro do orçamento (p50 ≈ 0,25 s): dentro dele vale o
+        // caminho completo, com `direct` respondendo sem o modelo principal;
+        // fora dele o turno segue e os pills entram quando chegarem. O
+        // DIRECIONADOR decide os pills numa chamada própria, disparada logo em
+        // seguida, e nunca segura a resposta.
         const recentActions = recentAgentActions(messages, AGENT_PILL_DEDUPE_TURNS);
         const triagePromise = manualCorpus ? null : triageAgent(agentContext);
         const triage = triagePromise
           ? await withinBudget(triagePromise, AGENT_TRIAGE_BUDGET_MS)
           : null;
         const speculative = Boolean(triagePromise) && !triage;
+        const directionPromise =
+          triage && triage.origin !== "bypass" ? directAgent(agentContext, triage) : null;
 
         if (preparationCancelledRef.current) return;
 
@@ -1183,6 +1188,56 @@ export function ChatWindow({
               }
             : undefined;
         const agentPills = pillsForAudit(agentPlan?.actions ?? []);
+        // Os pills do Direcionador entram no plano do turno quando chegam. Os
+        // pills só aparecem com a resposta terminada, então a chegada durante
+        // o streaming é invisível para o usuário.
+        const applyDirection = (direction: AgentDirection) => {
+          if (activeThreadIdRef.current !== threadId) return;
+          if (direction.reason === "direct_turn" || direction.reason === "agent_disabled") return;
+          const directed = withoutRepeatedActions(direction.actions, recentActions);
+          onAuditInteraction({
+            module: "agent",
+            action: "director_decision",
+            label: "Decisão do Direcionador",
+            value: String(directed.length),
+            meta: {
+              reason: direction.reason,
+              actions: directed.map((action) => ({
+                id: action.id,
+                confidence: action.confidence,
+                service: action.service,
+                destination: action.destination,
+              })),
+              turn_id: echoId,
+              ...(direction.durationMs === undefined ? {} : { duration_ms: direction.durationMs }),
+            },
+          });
+          if (!directed.length) return;
+          // Ainda dentro da rodada: os pills vão também para a auditoria dela.
+          if (pendingAccessLogRef.current?.value === value)
+            pendingAgentPillsRef.current = pillsForAudit(directed);
+          setMessages((existing) => {
+            const target =
+              existing.find((message) => message.id === echoId) ??
+              [...existing]
+                .reverse()
+                .find((message) => message.role === "user" && getMessageText(message) === value);
+            const plan = target?.metadata?.agentPlan;
+            if (!target || !plan) return existing;
+            const kept = plan.actions.filter((action) => action.id === "list_sources");
+            const actions = [...kept, ...directed].map((action, position) => ({
+              ...action,
+              position,
+              turnId: target.id,
+            }));
+            return existing.map((message) =>
+              message.id === target.id
+                ? { ...message, metadata: { ...message.metadata, agentPlan: { ...plan, actions } } }
+                : message,
+            );
+          });
+        };
+        void directionPromise?.then(applyDirection);
         if (agentPlan) {
           onAuditInteraction({
             module: "agent",
@@ -1467,10 +1522,10 @@ export function ChatWindow({
             if (!late || late.origin === "bypass") return;
             if (activeThreadIdRef.current !== threadId) return;
             const lateActions = withoutRepeatedActions(late.actions, recentActions);
-            if (!lateActions.length) return;
+            void directAgent(agentContext, late).then(applyDirection);
             // Fora do atualizador de estado: o React pode chamá-lo mais de uma
             // vez, e a auditoria não deve contar o mesmo pill duas vezes.
-            pendingAgentPillsRef.current = pillsForAudit(lateActions);
+            if (lateActions.length) pendingAgentPillsRef.current = pillsForAudit(lateActions);
             setMessages((existing) => {
               const target = [...existing].reverse().find((message) => message.role === "user");
               if (!target) return existing;

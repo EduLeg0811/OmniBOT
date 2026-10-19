@@ -47,8 +47,27 @@ export const AGENT_TARGETS = {
   list_sources: "#",
 } satisfies Record<AgentIntentId, string>;
 
-export const AGENT_VERBETE_FIELDS = ["texto", "titulo", "autor", "especialidade"] as const;
+export const AGENT_VERBETE_FIELDS = [
+  "texto",
+  "titulo",
+  "autor",
+  "especialidade",
+  "definologia",
+] as const;
 export type AgentVerbeteField = (typeof AGENT_VERBETE_FIELDS)[number];
+/** Nome de cada campo na busca de verbetes do Cons-IA (index_search_verb).
+ *
+ * A página só aceita estes valores e descarta o resto em silêncio, caindo no
+ * campo título. Até 2026-10-19 o ConsBOT mandava `texto` e `autor`, que não
+ * existem lá: «verbetes de fulano» buscava o nome no TÍTULO e voltava vazio,
+ * e toda busca «no texto» era, na prática, busca no título. */
+export const CONS_IA_VERBETE_FIELDS: Record<AgentVerbeteField, string> = {
+  texto: "todos",
+  titulo: "titulo",
+  autor: "verbetografo",
+  especialidade: "especialidade",
+  definologia: "definologia",
+};
 /** Catálogo de destinos da CCCI.
  *
  * Deixou de ser «áreas do ICGE»: atravessa seis domínios, e por isso o rótulo
@@ -287,7 +306,7 @@ export const CCCI_DESTINATIONS = [
     domain: "livros",
     label: "Conscienciograma",
     url: ICGE(6289),
-    hint: "O livro Conscienciograma em texto integral, para ler ou fazer a autoavaliação. Para BUSCAR um termo nele use search_conscienciograma.",
+    hint: "O livro Conscienciograma em texto integral, para ler ou fazer a autoavaliação. Para buscar um termo nele, a busca do Conscienciograma é melhor.",
   },
   // ── Publicações periódicas e acadêmicas ─────────────────────────────────
   {
@@ -295,7 +314,7 @@ export const CCCI_DESTINATIONS = [
     domain: "publicacoes",
     label: "Revistas científicas",
     url: ICGE(2927),
-    hint: "Panorama das revistas científicas da CCCI, com uma página por revista. Para LER ou buscar artigo, prefira o recurso periodicos.",
+    hint: "Panorama das revistas científicas da CCCI, com uma página por revista. Para ler ou buscar artigos, o portal de periódicos é melhor.",
   },
   {
     id: "publicacoes_ccci",
@@ -331,7 +350,7 @@ export const CCCI_DESTINATIONS = [
     domain: "verbetes",
     label: "Verbetoteca",
     url: ICGE(13493),
-    hint: "Navegação institucional da Verbetoteca. Para consultar o conteúdo de um verbete use search_verbete. Nunca sugerir junto com search_verbete (preferir search_verbete).",
+    hint: "Navegação institucional da Verbetoteca. Para buscar ou ler um verbete, a busca de verbetes é melhor.",
   },
   {
     id: "verbetes_waldo",
@@ -402,7 +421,7 @@ export const CCCI_DESTINATIONS = [
     domain: "referencia",
     label: "Infográficos",
     url: ICGE(2281),
-    hint: "Infográficos e mapas didáticos para baixar.",
+    hint: "Infográficos e mapas didáticos prontos, para baixar. Não quando o usuário pede ao assistente para desenhar ou montar um.",
   },
   {
     id: "revisao_ortografica",
@@ -488,7 +507,7 @@ export const CCCI_DESTINATIONS = [
     domain: "institucional",
     label: "Waldo Vieira",
     url: ICGE(6820),
-    hint: "Sobre o autor Waldo Vieira: biografia, entrevistas, artigos. Para o conteúdo das obras dele use search_book.",
+    hint: "Biografia, entrevistas e artigos do próprio Waldo Vieira. Somente quando a pergunta é sobre ele; nunca para outras pessoas nem para o conteúdo das obras.",
   },
   {
     id: "aleia_genios",
@@ -691,6 +710,16 @@ export const AGENT_TERM_MAX_WORDS = 6;
  * intenção+termo reaparece a cada resposta. */
 export const AGENT_PILL_DEDUPE_TURNS = 3;
 
+/** Uma obra que o usuário pode nomear.
+ *
+ * Os dois destinos do Cons-IA aceitam conjuntos DIFERENTES de obras, e cada
+ * página descarta em silêncio o que não conhece (conferido no código das
+ * páginas em 2026-10-19):
+ *  - busca em livros (index_search_book, `books`): LO, DAC, TNP, MDE, MP, EXP,
+ *    TEAT, TC, HSR, HSP, PROJ, PROJ1986, ZEFIRO;
+ *  - bibliografia (index_biblio_wv, `sigla`): PC, PROJ, EXP, CCG, T100, T200,
+ *    TNP, MP, MDE, NE, TC, MRC, HSR, HSP, MMT, DAC, DNC, LO1, LO2, EC10, ECNEW.
+ * Vazio = a obra não existe naquele destino. */
 export type AgentBook = {
   mainServerSourceId: string;
   consIaSearchId: string;
@@ -702,7 +731,7 @@ export const AGENT_BOOKS: readonly AgentBook[] = [
   {
     mainServerSourceId: "TEAT",
     consIaSearchId: "TEAT",
-    bibliographySigla: "TEAT",
+    bibliographySigla: "T200",
     label: "200 Teáticas da Conscienciologia",
     aliases: ["200 teaticas", "200 teáticas"],
   },
@@ -737,9 +766,10 @@ export const AGENT_BOOKS: readonly AgentBook[] = [
   {
     mainServerSourceId: "LO",
     consIaSearchId: "LO",
-    bibliographySigla: "LO",
-    label: "Léxico de Ortopensatas",
-    aliases: ["lexico de ortopensatas", "léxico de ortopensatas"],
+    // 2ª edição (2019), a vigente; a 1ª é LO1 no módulo de bibliografia.
+    bibliographySigla: "LO2",
+    label: "Léxico de Ortopensatas (o «Léxico»)",
+    aliases: ["lexico de ortopensatas", "léxico de ortopensatas", "lexico", "léxico"],
   },
   {
     mainServerSourceId: "MDE",
@@ -764,7 +794,7 @@ export const AGENT_BOOKS: readonly AgentBook[] = [
   },
   {
     mainServerSourceId: "MINI_ARLINDO",
-    consIaSearchId: "MINI_ARLINDO",
+    consIaSearchId: "",
     bibliographySigla: "",
     label: "Minitertúlia — Arlindo",
     aliases: ["minitertulia arlindo", "minitertúlia arlindo"],
@@ -785,7 +815,7 @@ export const AGENT_BOOKS: readonly AgentBook[] = [
   },
   {
     mainServerSourceId: "QUEST",
-    consIaSearchId: "QUEST",
+    consIaSearchId: "",
     bibliographySigla: "",
     label: "Questões Mini",
     aliases: ["questoes mini", "questões mini"],
@@ -804,9 +834,39 @@ export const AGENT_BOOKS: readonly AgentBook[] = [
     label: "Zéfiro",
     aliases: ["zefiro", "zéfiro"],
   },
+  // Só no módulo de bibliografia: não há busca de texto delas no Cons-IA.
+  ...(
+    [
+      ["PC", "Projeções da Consciência", ["projecoes da consciencia", "projeções da consciência"]],
+      ["CCG", "Conscienciograma", ["conscienciograma"]],
+      ["T100", "100 Testes da Conscienciometria", ["100 testes"]],
+      ["NE", "Nossa Evolução", ["nossa evolucao", "nossa evolução"]],
+      ["MRC", "Manual de Redação da Conscienciologia", ["manual de redacao", "manual de redação"]],
+      ["MMT", "Manual dos Megapensenes Trivocabulares", ["megapensenes trivocabulares"]],
+      [
+        "DNC",
+        "Dicionário de Neologismos da Conscienciologia",
+        ["dicionario de neologismos", "dicionário de neologismos"],
+      ],
+      [
+        "EC10",
+        "Enciclopédia da Conscienciologia (10ª edição)",
+        ["enciclopedia da conscienciologia", "enciclopédia da conscienciologia"],
+      ],
+    ] as const
+  ).map(([sigla, label, aliases]) => ({
+    mainServerSourceId: sigla,
+    consIaSearchId: "",
+    bibliographySigla: sigla,
+    label,
+    aliases,
+  })),
 ];
 export const AGENT_BOOK_IDS = AGENT_BOOKS.map((book) => book.mainServerSourceId);
 export function agentBook(id: string | undefined) {
+  // Vazio nunca é obra: há obras sem id de busca (consIaSearchId vazio), e um
+  // `book` vazio as encontraria.
+  if (!id) return undefined;
   return AGENT_BOOKS.find(
     (book) =>
       book.mainServerSourceId === id ||
@@ -848,7 +908,9 @@ export function agentBookByName(value: string | undefined) {
 export const RESOURCE_TARGETS: Record<(typeof AGENT_RESOURCE_IDS)[number], string> = {
   periodicos: "https://periodicos.conscienciologia.org.br/",
   enciclopedia: "https://enciclopediadaconscienciologia.org/",
-  livros_pdf: "https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
+  // Sem `/u/N/`: esse índice é a conta Google de quem montou o link, e no
+  // navegador de outra pessoa aponta para outra conta (ou para nenhuma).
+  livros_pdf: "https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
   quiz: "https://notebooklm.link.google/nEesZnRp21eu",
   flashcards: "https://notebooklm.link.google/OdYcHoLNuP1P",
   consgpt: "https://chatgpt.com/g/g-68a5d68b96c4819189dd1e6fb0def83f-consgpt",

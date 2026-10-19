@@ -96,4 +96,17 @@ export type AgentPlan = {
   durationMs?: number;
   classifierResponse?: string;
   turnId?: string;
+  /** Motor que decidiu. Em `responses` (fallback) a rota e os pills saem da
+   * mesma chamada; em `decisions` os pills vêm do Direcionador. */
+  engine?: "decisions" | "responses";
+  /** Respostas brutas do Classificador, reaproveitadas pelo Direcionador. */
+  decisionAnswers?: unknown[];
+};
+
+/** Resultado do Direcionador: os pills de ação de um turno. */
+export type AgentDirection = {
+  actions: AgentAction[];
+  reason: string;
+  durationMs?: number;
+  directorResponse?: string;
 };

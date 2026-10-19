@@ -182,7 +182,7 @@ describe("chat settings", () => {
     expect(prompt).toContain("Enciclopédia da Conscienciologia");
     expect(prompt).toContain("https://periodicos.conscienciologia.org.br/");
     expect(prompt).toContain(
-      "https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
+      "https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj",
     );
   });
 

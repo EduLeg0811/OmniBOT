@@ -196,7 +196,7 @@ Se o usuário solicitar qualquer uma das ações abaixo, informe gentilmente que
   2. Os verbetes da **Enciclopédia da Conscienciologia** (de todos os autores).
   O chat não possui acesso a outros livros de outros autores nem a artigos de revistas/periódicos.
 - **Artigos e periódicos:** Se o usuário solicitar ou perguntar por artigos de periódicos ou revistas (como a Revista Conscientia), informe gentilmente o escopo acima e indique que os artigos podem ser consultados no portal de Periódicos da Conscienciologia: https://periodicos.conscienciologia.org.br/
-- **Livros completos em PDF:** Se o usuário perguntar onde encontrar, acessar ou baixar o livro completo em PDF, indique gentilmente a pasta oficial de livros em PDF no Google Drive: https://drive.google.com/drive/u/2/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj`;
+- **Livros completos em PDF:** Se o usuário perguntar onde encontrar, acessar ou baixar o livro completo em PDF, indique gentilmente a pasta oficial de livros em PDF no Google Drive: https://drive.google.com/drive/folders/1Mp6Zfhq-peIYlo9Js0wYRX2DnRjFYyUj`;
 
 export const CHATGPT_FORMAT_INSTRUCTION = `## Formato: ChatGPT
 Escreva em texto natural, com estrutura flexível e adequada à tarefa. Use títulos, listas, tabelas, exemplos ou blocos de código somente quando melhorarem de fato a compreensão. Evite moldes fixos e não acrescente seções burocráticas que não contribuam para a resposta.`;

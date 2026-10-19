@@ -302,3 +302,73 @@ describe("interpretação das respostas", () => {
     expect(plan.actions[0]!.href).toContain("sigla=LO");
   });
 });
+
+describe("auditoria do log real (2026-10-19)", () => {
+  it("os links de verbetes usam os campos que o Cons-IA aceita", () => {
+    const plan = (field: string) =>
+      planFromDecisions(
+        [
+          shape("busca_literal"),
+          predicate("busca_termo", 0.95),
+          choice("escopo_busca", { verbetes: 0.9, ambos: 0.1 }),
+          choice("campo_verbete", { [field]: 0.9, titulo: 0.05 }),
+          choice("termo", { "": 0.05, tenepes: 0.95 }),
+        ],
+        context("x"),
+      ).actions[0]!.href;
+    expect(plan("texto")).toContain("fields=todos");
+    expect(plan("autor")).toContain("fields=verbetografo");
+    expect(plan("definologia")).toContain("fields=definologia");
+  });
+
+  it("bibliografia de livro usa a sigla do módulo de bibliografia", () => {
+    const href = (obra: string) =>
+      planFromDecisions(
+        [
+          shape("pergunta"),
+          predicate("bibliografia_livro", 0.9),
+          choice("obra", { nenhum: 0.05, [obra]: 0.95 }),
+        ],
+        context("x"),
+      ).actions[0]!.href;
+    expect(href("LO")).toContain("sigla=LO2");
+    expect(href("TEAT")).toContain("sigla=T200");
+    expect(href("NE")).toContain("sigla=NE");
+  });
+
+  it("referência de livros em geral abre o módulo na escolha da obra", () => {
+    const plan = planFromDecisions(
+      [
+        shape("pergunta"),
+        predicate("bibliografia_livro", 0.9),
+        choice("termo", { "": 0.6, Waldo: 0.4 }),
+      ],
+      context("Como citar os livros do Waldo?"),
+    );
+    expect(plan.actions.map((a) => a.id)).toEqual(["bibliografia_livros"]);
+    expect(plan.actions[0]!.href).not.toContain("sigla=");
+  });
+
+  it("referência de um conceito é a do verbete homônimo", () => {
+    const plan = planFromDecisions(
+      [
+        shape("pergunta"),
+        predicate("bibliografia_livro", 0.3),
+        predicate("bibliografia_verbete", 0.9),
+        choice("termo", { "": 0.2, interassistencialidade: 0.8 }),
+      ],
+      context("definição de interassistencialidade e referência bibliográfica"),
+    );
+    expect(plan.actions.map((a) => a.id)).toEqual(["bibliografia_verbetes"]);
+    expect(plan.actions[0]!.href).toContain("verbetes=interassistencialidade");
+  });
+
+  it("palavras que nomeiam o pedido ou apontam para trás nunca são termo", () => {
+    expect(termCandidates("Quais as fontes desse parágrafo?")).not.toContain("fontes");
+    expect(termCandidates("referências bibliográficas da Conscienciologia")).toEqual([]);
+    expect(termCandidates("encontre artigos sobre a escrita conscienciológica")).not.toContain(
+      "conscienciológica",
+    );
+    expect(termCandidates("Quais são as questões 65, 70 e 75?")).not.toContain("questões 65");
+  });
+});

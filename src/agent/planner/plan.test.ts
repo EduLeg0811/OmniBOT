@@ -195,7 +195,7 @@ describe("URLs e parâmetros", () => {
       { intent: "open_resource", term: "", confidence: 1, resource: "periodicos" },
     ];
     const hrefs = cases.map((item) => actionsFromMatches([item], context())[0]!.href);
-    expect(hrefs[0]).toContain("field=autor");
+    expect(hrefs[0]).toContain("fields=verbetografo");
     expect(hrefs[1]).toContain("index_search_ccg.html");
     expect(hrefs[2]).toContain("sigla=PROJ");
     expect(hrefs[2]).toContain("style=bee");

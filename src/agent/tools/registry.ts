@@ -4,6 +4,7 @@ import {
   AGENT_RESOURCE_IDS,
   AGENT_TARGETS,
   AGENT_VERBETE_FIELDS,
+  CONS_IA_VERBETE_FIELDS,
   CCCI_DESTINATIONS,
   CCCI_DESTINATION_IDS,
   ENCYCLOSSAPIENS_SECTIONS,
@@ -154,8 +155,8 @@ export const AGENT_TOOLS: AgentTool[] = [
     responsePolicy: "fulfills_explicit_action",
     describe: (en) =>
       en
-        ? "search_verbete: explicit search in Encyclopedia entries. field selects texto, titulo, autor or especialidade."
-        : "search_verbete: busca explicitamente pedida nos verbetes da Enciclopédia. field escolhe texto, titulo, autor ou especialidade.",
+        ? "search_verbete: explicit search in Encyclopedia entries. field selects texto, titulo, autor, especialidade or definologia."
+        : "search_verbete: busca explicitamente pedida nos verbetes da Enciclopédia. field escolhe texto, titulo, autor, especialidade ou definologia.",
     intro: ({ term }, en) =>
       en
         ? `The link below lets you search the Encyclopedia entries for “${term}”.`
@@ -165,7 +166,10 @@ export const AGENT_TOOLS: AgentTool[] = [
         m,
         c,
         short(c.host.english ? "Entries" : "Verbetes", m.term),
-        url(AGENT_TARGETS.search_verbete, { q: m.term, field: m.field ?? "texto" }),
+        url(AGENT_TARGETS.search_verbete, {
+          q: m.term,
+          fields: CONS_IA_VERBETE_FIELDS[m.field ?? "texto"] ?? "todos",
+        }),
         "Cons-IA",
         `verbetes por ${m.field ?? "texto"}`,
       ),
@@ -237,8 +241,8 @@ export const AGENT_TOOLS: AgentTool[] = [
       action(
         m,
         c,
-        short(c.host.english ? "Entry bibliography" : "Bibliografia", m.term),
-        url(AGENT_TARGETS.bibliografia_verbetes, { q: m.term, style: m.style || "simples" }),
+        short(c.host.english ? "Entry reference" : "Referência do verbete", m.term),
+        url(AGENT_TARGETS.bibliografia_verbetes, { verbetes: m.term, style: m.style || "simples" }),
         "Cons-IA",
         "bibliografia de verbetes",
       ),
