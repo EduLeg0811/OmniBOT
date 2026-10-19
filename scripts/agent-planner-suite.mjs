@@ -5,6 +5,14 @@
  *   npm run agent:suite                  → 3 execuções por caso
  *   npm run agent:suite -- --runs 1      → passada rápida
  *   npm run agent:suite -- --ficha 4     → só uma ficha (1..4 ou geral)
+ *   npm run agent:suite -- --verbose     → mostra o rastro de todo caso
+ *   npm run agent:suite -- --timing after → pills decididos DEPOIS da resposta,
+ *                                         com o texto respondido como entrada.
+ *                                         Gera uma resposta real por caso (RAG,
+ *                                         modelo e prompt padrão do app) e a
+ *                                         guarda em cache no diretório temporário.
+ *   npm run agent:suite -- --engine responses → motor antigo (/api/llm + JSON
+ *                                         Schema); o padrão é decisions
  *
  * Precisa do Main-Server no ar (VITE_MAIN_SERVER_URL ou 127.0.0.1:8000).
  *
@@ -17,7 +25,7 @@
  * O prompt e o schema vêm do próprio módulo, empacotados na hora: a suíte
  * mede o que o app manda, não uma cópia que envelhece.
  */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -40,6 +48,10 @@ function arg(name, fallback) {
 
 const RUNS = Number(arg("runs", 3));
 const FICHA = arg("ficha", "");
+const ENGINE = arg("engine", "decisions");
+const VERBOSE = process.argv.includes("--verbose");
+const TIMING = arg("timing", "before");
+const ANSWER_CACHE = join(tmpdir(), "consbot-agent-suite-answers.json");
 
 /** Empacota prompt e schema do módulo, resolvendo o alias `@/` e o
  * `import.meta.env` que o Vite injeta em produção. */
@@ -57,6 +69,8 @@ async function loadPlanner() {
       'export { AGENT_TOOLS } from "@/agent/tools/registry";',
       'export { actionsFromMatches } from "@/agent/tools/registry";',
       'export { normalizePlannerPayload } from "@/agent/planner/plan";',
+      'export { buildDecisionRequest, buildActionDecisionRequest, planFromDecisions } from "@/agent/planner/decisions";',
+      'export { DEFAULT_SETTINGS, buildSystemPrompt, verbosityForDepth } from "@/lib/chat-settings";',
       'export { AGENT_CLASSIFIER_REASONING, AGENT_CONFIDENCE_MEDIUM } from "@/agent/config";',
     ].join("\n"),
   );
@@ -96,7 +110,133 @@ function classifierMessage(question) {
   ].join("\n\n");
 }
 
+function suiteContext(question) {
+  return {
+    userText: question,
+    semanticSourceIds: ["LO"],
+    hasFileSearch: true,
+    settings: { enabled: true, prompt: "", presentation: "classic", followUpSuggestions: true },
+    host: { apiBase: API_BASE, english: false, vectorStoreId: "test", logEvent() {} },
+    threadId: "live-suite",
+  };
+}
+
+/** Mesmo caminho de `requestDecisionPlan` em planner/plan.ts. */
+async function classifyDecisions(planner, question) {
+  const context = suiteContext(question);
+  const request = planner.buildDecisionRequest(context);
+  const started = Date.now();
+  const response = await fetch(`${API_BASE}/api/decisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input: request.input,
+      questions: request.questions,
+      promptCacheKey: request.promptCacheKey,
+      app: "consbot-agent",
+      action: "suite",
+    }),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${await response.text()}`);
+  const body = await response.json();
+  const ms = Date.now() - started;
+  const plan = planner.planFromDecisions(body.answers, context, ms);
+  return {
+    intents: plan.actions.map((a) => a.id),
+    mode: plan.responseMode,
+    proposedRoute: plan.responseMode,
+    confidence: plan.responseConfidence,
+    reason: plan.reason,
+    answer: plan.answer,
+    args: plan.actions.map((a) => ({
+      term: a.meta?.term ?? "",
+      field: a.meta?.field ?? "",
+      book: a.meta?.book ?? "",
+      area: a.meta?.area ?? "",
+      resource: a.meta?.resource ?? "",
+    })),
+    urls: plan.actions.map((a) => a.href),
+    ms,
+    tokens: body.usage?.input_tokens ?? 0,
+  };
+}
+
+/** Resposta real do app para a pergunta: mesmo modelo, prompt, profundidade e
+ * base RAG padrão. Em cache, para comparar motores sobre o MESMO texto. */
+let answers = null;
+async function answerFor(planner, question) {
+  if (!answers) answers = JSON.parse(await readFile(ANSWER_CACHE, "utf8").catch(() => "{}"));
+  if (answers[question]) return answers[question];
+  const settings = planner.DEFAULT_SETTINGS;
+  const response = await fetch(`${API_BASE}/api/llm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: [{ role: "user", content: question }],
+      model: settings.model,
+      systemPrompt: planner.buildSystemPrompt(settings),
+      reasoningEffort: settings.reasoningEffort,
+      verbosity: planner.verbosityForDepth(settings.responseDepth),
+      vectorStores: [settings.vectorStoreId],
+      toolChoice: { type: "file_search" },
+      vectorMaxResults: settings.vectorMaxResults,
+      app: "consbot-agent",
+      action: "suite-answer",
+      store: false,
+    }),
+  });
+  if (!response.ok) throw new Error(`resposta: HTTP ${response.status}`);
+  const { content } = await response.json();
+  answers[question] = content ?? "";
+  await writeFile(ANSWER_CACHE, JSON.stringify(answers, null, 1));
+  return answers[question];
+}
+
+/** Rota pela triagem; pills pela decisão pós-resposta, como no app. Turnos
+ * `direct` não têm resposta do modelo principal: ficam com os pills da triagem. */
+async function classifyAfter(planner, question) {
+  const triage = await classifyDecisions(planner, question);
+  if (triage.mode !== "full") return triage;
+  const answer = await answerFor(planner, question);
+  const context = suiteContext(question);
+  const request = planner.buildActionDecisionRequest(context, answer);
+  const started = Date.now();
+  const response = await fetch(`${API_BASE}/api/decisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input: request.input,
+      questions: request.questions,
+      promptCacheKey: request.promptCacheKey,
+      app: "consbot-agent",
+      action: "suite-after",
+    }),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${await response.text()}`);
+  const body = await response.json();
+  const ms = Date.now() - started;
+  const plan = planner.planFromDecisions(body.answers, context, ms);
+  return {
+    ...triage,
+    intents: plan.actions.map((a) => a.id),
+    reason: plan.reason,
+    args: plan.actions.map((a) => ({
+      term: a.meta?.term ?? "",
+      field: a.meta?.field ?? "",
+      book: a.meta?.book ?? "",
+      area: a.meta?.area ?? "",
+      resource: a.meta?.resource ?? "",
+    })),
+    urls: plan.actions.map((a) => a.href),
+    ms,
+    tokens: body.usage?.input_tokens ?? 0,
+  };
+}
+
 async function classify(planner, instructions, schema, question) {
+  if (ENGINE === "decisions" && TIMING === "after") return classifyAfter(planner, question);
+  if (ENGINE === "decisions") return classifyDecisions(planner, question);
+  const started = Date.now();
   const response = await fetch(`${API_BASE}/api/llm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -112,12 +252,16 @@ async function classify(planner, instructions, schema, question) {
       verbosity: "low",
       responseSchema: schema,
       responseSchemaName: "agent_intent",
+      app: "consbot-agent",
+      action: "suite",
+      store: false,
     }),
   });
 
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-  const { content } = await response.json();
+  const { content, usage } = await response.json();
+  const ms = Date.now() - started;
   const parsed = JSON.parse(content ?? "{}");
   const context = {
     userText: question,
@@ -145,6 +289,8 @@ async function classify(planner, instructions, schema, question) {
       resource: a.resource || "",
     })),
     urls: normalized.actions.map((a) => a.href),
+    ms,
+    tokens: (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0),
   };
 }
 
@@ -186,7 +332,7 @@ async function main() {
 
   const cases = FICHA ? CASES.filter((c) => String(c.ficha) === FICHA) : CASES;
   console.log(
-    `${cases.length} casos × ${RUNS} execuções = ${cases.length * RUNS} chamadas ao ${MODEL}`,
+    `${cases.length} casos × ${RUNS} execuções = ${cases.length * RUNS} chamadas ao ${MODEL} (${ENGINE}${TIMING === "after" ? ", pills depois da resposta" : ""})`,
   );
   console.log(`${planner.AGENT_TOOLS.length} ferramentas no registro · ${API_BASE}\n`);
 
@@ -260,8 +406,10 @@ async function main() {
       `${status.padEnd(6)}${`${hits}/${RUNS}`.padEnd(5)}${observed.padEnd(30)}${modes.padEnd(12)}${proposed.padEnd(12)}${flags.join(" ")}  ${testCase.q}`,
     );
 
-    if (status !== "PASS")
-      console.log(`${" ".repeat(11)}esperado: ${testCase.expect.join("+") || "—"}`);
+    if (status !== "PASS" || VERBOSE)
+      console.log(
+        `${" ".repeat(11)}esperado: ${testCase.expect.join("+") || "—"}  · ${runs[0].reason ?? ""}`,
+      );
   }
 
   /* ── resumo ── */
@@ -303,6 +451,23 @@ async function main() {
   console.log(
     `\nAções indevidas (casos que não deviam disparar): ${noise.length} em ${rows.filter((r) => r.testCase.expect.length === 0).length * RUNS} execuções`,
   );
+
+  const timings = rows
+    .flatMap((r) => r.runs)
+    .map((run) => run.ms)
+    .filter((ms) => typeof ms === "number")
+    .sort((a, b) => a - b);
+  const at = (q) => timings[Math.min(timings.length - 1, Math.floor(q * timings.length))];
+  if (timings.length)
+    console.log(
+      `
+Latência (${ENGINE}): p50 ${at(0.5)} ms · p90 ${at(0.9)} ms · máx ${timings.at(-1)} ms`,
+    );
+  const tokens = rows.flatMap((r) => r.runs).map((run) => run.tokens ?? 0);
+  if (tokens.length)
+    console.log(
+      `Tokens por chamada: média ${Math.round(tokens.reduce((a, b) => a + b, 0) / tokens.length)}`,
+    );
 
   await cleanup();
   process.exit(failed > 0 ? 1 : 0);

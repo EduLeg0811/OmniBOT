@@ -1,8 +1,10 @@
 import {
   AGENT_ANSWER_MAX,
   AGENT_BOOK_IDS,
+  AGENT_CLASSIFIER_ENGINE,
   AGENT_CLASSIFIER_MODEL,
   AGENT_CLASSIFIER_REASONING,
+  AGENT_DECISIONS_TIMEOUT_MS,
   AGENT_PLANNER_TIMEOUT_MS,
   AGENT_RESOURCE_IDS,
   AGENT_TERM_MAX_WORDS,
@@ -10,6 +12,11 @@ import {
   CCCI_DESTINATION_IDS,
   ENCYCLOSSAPIENS_SECTIONS,
 } from "@/agent/config";
+import {
+  buildDecisionRequest,
+  planFromDecisions,
+  type DecisionAnswer,
+} from "@/agent/planner/decisions";
 import { agentInstructionsFor, presentationInstructionFor } from "@/agent/planner/prompt";
 import { AGENT_PLANNER_SCHEMA } from "@/agent/planner/schema";
 import { actionsFromMatches, agentTool } from "@/agent/tools/registry";
@@ -202,8 +209,60 @@ export function planAgent(ctx: AgentContext): Promise<AgentPlan> {
 function invalidate(key: string) {
   if (cached?.key === key) cached = null;
 }
+/** A Decisions API ficou indisponível nesta sessão (Main-Server sem a rota,
+ * ou a conta sem acesso). Evita pagar a tentativa perdida em todo turno. */
+let decisionsUnavailable = false;
+
 async function requestPlan(ctx: AgentContext, key: string): Promise<AgentPlan | typeof FAILED> {
   if (ctx.userText.trim().length < 2) return empty();
+  if (AGENT_CLASSIFIER_ENGINE === "decisions" && !decisionsUnavailable) {
+    const plan = await requestDecisionPlan(ctx);
+    if (plan !== FAILED) return plan;
+  }
+  return requestResponsesPlan(ctx, key);
+}
+
+async function requestDecisionPlan(ctx: AgentContext): Promise<AgentPlan | typeof FAILED> {
+  const request = buildDecisionRequest(ctx);
+  const started = performance.now();
+  try {
+    const response = await fetch(`${ctx.host.apiBase}/api/decisions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      signal: AbortSignal.timeout(AGENT_DECISIONS_TIMEOUT_MS),
+      body: JSON.stringify({
+        input: request.input,
+        questions: request.questions,
+        promptCacheKey: request.promptCacheKey,
+        timeout: (AGENT_DECISIONS_TIMEOUT_MS - 500) / 1000,
+        maxRetries: 0,
+        app: "consbot-agent",
+        action: "classify",
+      }),
+    });
+    // 404/405: Main-Server ainda sem a rota. 403 vindo da OpenAI chega como
+    // 502 com o detalhe; os dois casos persistem na sessão.
+    if (response.status === 404 || response.status === 405) {
+      decisionsUnavailable = true;
+      return FAILED;
+    }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      if (/\b403\b|not enabled/i.test(detail)) decisionsUnavailable = true;
+      return FAILED;
+    }
+    const result = (await response.json()) as { answers?: DecisionAnswer[] };
+    if (!Array.isArray(result.answers)) return FAILED;
+    return planFromDecisions(result.answers, ctx, Math.round(performance.now() - started));
+  } catch {
+    return FAILED;
+  }
+}
+
+async function requestResponsesPlan(
+  ctx: AgentContext,
+  key: string,
+): Promise<AgentPlan | typeof FAILED> {
   const instructions = [
     agentInstructionsFor(ctx.host.english),
     ctx.settings.prompt.trim(),
@@ -227,6 +286,12 @@ async function requestPlan(ctx: AgentContext, key: string): Promise<AgentPlan | 
         responseSchema: AGENT_PLANNER_SCHEMA,
         responseSchemaName: "agent_plan",
         responseSchemaDescription: "Modo de resposta e ações independentes para um turno.",
+        // Sem isto o Main-Server identifica a origem como `consbot` e aplica
+        // `consbot_model_override`/`consbot_effort_override` ao classificador:
+        // o esforço `none` pedido aqui virava `low`, com raciocínio pago.
+        app: "consbot-agent",
+        action: "classify",
+        store: false,
       }),
     });
     if (!response.ok) return FAILED;

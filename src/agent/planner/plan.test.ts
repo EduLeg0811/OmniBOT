@@ -62,7 +62,10 @@ describe("normalização do planejador Agent v3", () => {
       context(),
     );
     expect(plan).toMatchObject({ responseMode: "full", route: "full", answer: "" });
-    expect(plan.actions[0]).toMatchObject({ id: "catalogo_ccci", label: "Memória CCCI" });
+    expect(plan.actions[0]).toMatchObject({
+      id: "catalogo_ccci",
+      label: "Imprensa e vídeos da CCCI",
+    });
   });
 
   it("confiança baixa do modo não suprime mais a resposta, e a ação fraca continua filtrada", () => {
@@ -249,14 +252,16 @@ describe("regra pontual: Verbetoteca do ICGE (?page_id=13493) vs busca de verbet
     expect(isIcgeVerbetotecaUrl("https://www.icge.org.br/?page_id=9973")).toBe(false);
 
     expect(isSearchVerbeteUrl("https://cons-ia.org/index_search_verb.html")).toBe(true);
-    expect(isSearchVerbeteUrl("https://cons-ia.org/index_search_verb.html?q=tenepes&field=texto")).toBe(true);
+    expect(
+      isSearchVerbeteUrl("https://cons-ia.org/index_search_verb.html?q=tenepes&field=texto"),
+    ).toBe(true);
     expect(isSearchVerbeteUrl("https://cons-ia.org/index_search_book.html")).toBe(false);
   });
 
   it("nunca sugere Verbetoteca do ICGE e search_verbete ao mesmo tempo, preferindo search_verbete", () => {
     const matches: AgentMatch[] = [
       { intent: "catalogo_ccci", term: "", confidence: 0.98, area: "verbetoteca" },
-      { intent: "search_verbete", term: "autopesquisa", confidence: 0.90, field: "texto" },
+      { intent: "search_verbete", term: "autopesquisa", confidence: 0.9, field: "texto" },
     ];
     const actions = actionsFromMatches(matches, context());
     expect(actions).toHaveLength(1);
@@ -270,7 +275,7 @@ describe("regra pontual: Verbetoteca do ICGE (?page_id=13493) vs busca de verbet
     const matches: AgentMatch[] = [
       { intent: "catalogo_ccci", term: "", confidence: 0.98, area: "verbetoteca" },
       { intent: "search_verbete", term: "tenepes", confidence: 0.95 },
-      { intent: "search_book", term: "tenepes", confidence: 0.90 },
+      { intent: "search_book", term: "tenepes", confidence: 0.9 },
     ];
     const actions = actionsFromMatches(matches, context());
     expect(actions).toHaveLength(2);
@@ -291,9 +296,9 @@ describe("regra pontual: Verbetoteca do ICGE (?page_id=13493) vs busca de verbet
   it("permite até MAX_AGENT_ACTIONS = 3 ações simultâneas", () => {
     const matches: AgentMatch[] = [
       { intent: "search_verbete", term: "tenepes", confidence: 0.95 },
-      { intent: "search_book", term: "tenepes", confidence: 0.90 },
+      { intent: "search_book", term: "tenepes", confidence: 0.9 },
       { intent: "consulta_lexicons", term: "tenepes", confidence: 0.85 },
-      { intent: "search_conscienciograma", term: "tenepes", confidence: 0.80 },
+      { intent: "search_conscienciograma", term: "tenepes", confidence: 0.8 },
     ];
     const actions = actionsFromMatches(matches, context());
     expect(actions).toHaveLength(3);
@@ -304,5 +309,3 @@ describe("regra pontual: Verbetoteca do ICGE (?page_id=13493) vs busca de verbet
     ]);
   });
 });
-
-

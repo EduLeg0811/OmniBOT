@@ -1,3 +1,9 @@
+"""Gera docs/agent-rules.docx, a especificação do módulo AGENT.
+
+Rodar depois de mudar o classificador: `py -3 scripts/update-agent-rules-docx.py`
+(precisa de python-docx). O catálogo CCCI é lido de src/agent/config.ts.
+"""
+import re
 from pathlib import Path
 from docx import Document
 from docx.enum.section import WD_SECTION
@@ -9,6 +15,14 @@ from docx.shared import Cm, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs" / "agent-rules.docx"
+CONFIG = (ROOT / "src" / "agent" / "config.ts").read_text(encoding="utf-8")
+CCCI_ROWS = [
+    (m.group(1), m.group(2), m.group(3), re.sub(r"\s+", " ", m.group(4)))
+    for m in re.finditer(
+        r'id: "([^"]+)",\s*domain: "([^"]+)",\s*label: "([^"]+)",\s*url: [^\n]+\n\s*hint:\s*"((?:[^"\\]|\\.)*)"',
+        CONFIG,
+    )
+]
 BLUE = "2856A3"
 PALE = "EAF1FC"
 
@@ -77,10 +91,10 @@ page_field(section.footer.paragraphs[0])
 
 title = doc.add_paragraph(style="Title")
 title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-title.add_run("Agent Mode — Clássico")
+title.add_run("Agent Mode")
 sub = doc.add_paragraph()
 sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = sub.add_run("Especificação funcional e técnica · versão 2")
+r = sub.add_run("Especificação funcional e técnica · versão 3 · classificador na Decisions API")
 r.italic = True; r.font.size = Pt(13); r.font.color.rgb = RGBColor(70, 85, 105)
 doc.add_paragraph()
 box = doc.add_table(rows=1, cols=1)
@@ -89,85 +103,127 @@ set_cell_text(box.cell(0, 0), "Objetivo: oferecer ações contextuais úteis sem
 doc.add_paragraph()
 doc.add_heading("Princípios", level=1)
 for item in [
-    "O gpt-6-luna classifica todos os turnos; não existe classificação determinística local.",
-    "Necessidade de resposta e relevância dos pills são decisões independentes.",
-    "Ações externas apenas preparam navegação; nunca são apresentadas como resultados já obtidos.",
-    "No Clássico, corpus é proibido e sempre rebaixado para full.",
-    "Timeout, erro de rede ou JSON inválido seguem transparentemente para full.",
+    "O classificador (porteiro) é um questionário fechado respondido pelo gpt-6-luna na Decisions API (POST /v1/decisions). Ele não escreve texto: responde predicados (probabilidade) e escolhas entre opções dadas.",
+    "Necessidade de resposta e relevância dos pills são decisões independentes. Um pill nunca substitui a resposta.",
+    "A confiança de cada ação é a probabilidade do modelo, não um número escrito por ele. Os limiares vêm da suíte real.",
+    "O termo de busca é sempre um trecho da mensagem do usuário: não há como inventar grafia nem concatenar palavras da resposta.",
+    "Respostas sem o modelo principal (saudação, agradecimento, despedida, fontes carregadas, corpus) usam textos de catálogo.",
+    "No Clássico, corpus é proibido.",
+    "Qualquer falha cai no classificador antigo (Responses API) e, se ele também falhar, em full.",
+    "Regras determinísticas locais (periódicos, livros em PDF) só acrescentam pills; nunca suprimem a resposta.",
 ]:
     bullet(item)
 
 doc.add_page_break()
 doc.add_heading("1. Operação do classificador", level=1)
 table(["Parâmetro", "Contrato"], [
-    ("Modelo", "gpt-6-luna"),
-    ("Raciocínio", "reasoningEffort: none"),
-    ("Verbosidade", "low"),
-    ("Saída", "JSON estrito via Responses API"),
-    ("Timeout", "6.000 ms; falha → full"),
-    ("Contexto", "pergunta anterior ≤ 500; resposta anterior ≤ 900; estado das fontes; apresentação; pergunta atual"),
-], [4.2, 12.2])
-doc.add_heading("Modalidades de resposta", level=2)
-table(["responseMode", "Uso"], [
-    ("full", "Padrão obrigatório para dúvidas conceituais, factuais, explicativas, comparativas, sínteses e redação."),
-    ("action_only", "Ação ou navegação explicitamente pedida; exige ação válida e alta confiança."),
-    ("direct", "Saudação, despedida, agradecimento, funcionamento do ConsBOT ou list_sources."),
-    ("clarify", "Pergunta curta quando falta detalhe factual crucial."),
-    ("corpus", "Somente trechos brutos explicitamente pedidos no modo Citações; proibido no Clássico."),
+    ("Motor", "decisions (padrão). VITE_AGENT_CLASSIFIER_ENGINE=responses força o caminho antigo."),
+    ("Rota", "Frontend → Main-Server POST /api/decisions → OpenAI POST /v1/decisions"),
+    ("Modelo", "gpt-6-luna (único aceito pela Decisions API)"),
+    ("Entrada", "Mensagem developer: contexto do ConsBOT + prompt do admin. Mensagem user: pergunta anterior ≤ 500, resposta anterior ≤ 900, mensagem atual."),
+    ("Perguntas", "15 por turno (16 em Citações), numa única chamada."),
+    ("Timeout", "4.000 ms no navegador; 3,5 s no servidor; sem retry."),
+    ("Cache", "prompt_cache_key agent-decisions-v1-<apresentação>"),
+    ("Custo", "≈ 4.500 tokens de entrada por turno, US$ 0,10 por milhão; saída não é cobrada."),
+    ("Latência medida", "p50 0,27 s · p90 0,40 s (antes: 2,9 s · 15,5 s)"),
+    ("Cota", "/api/decisions não consome cota nem sofre o override de modelo por app do /api/llm."),
 ], [3.6, 12.8])
-doc.add_paragraph("O campo legado route continua sendo gravado como derivação: action_only → direct; os demais mantêm a modalidade equivalente quando ela existe.")
 
-doc.add_heading("Defesa em profundidade", level=2)
-table(["Condição", "Resultado local"], [
-    ("responseConfidence < 0,55", "Força full."),
-    ("0,55 ≤ confiança < 0,78", "direct, action_only e clarify viram full; pills confiáveis permanecem."),
-    ("confidence da ação < 0,55", "Ação descartada."),
-    ("action_only sem ação válida", "Força full."),
-    ("corpus no Clássico", "Força full; nunca converte para direct."),
-], [6.2, 10.2])
+doc.add_heading("Questionário", level=2)
+table(["Pergunta", "Tipo", "Decide"], [
+    ("forma", "choice (12)", "Forma do turno: conceito, continuação, colagem, pergunta, procedência, busca literal, meta, fontes, saudação, agradecimento, despedida, outro."),
+    ("busca_termo", "predicate", "Busca/localização explícita de termo, fonte de citação, ou listagem de verbetes por título/autor/especialidade."),
+    ("escopo_busca", "choice (3)", "ambos (padrão) · livros · verbetes."),
+    ("campo_verbete", "choice (4)", "texto · titulo · autor · especialidade."),
+    ("obra", "choice (16)", "Obra do catálogo nomeada pelo usuário, ou nenhum."),
+    ("busca_conscienciograma", "predicate", "Busca explícita no Conscienciograma."),
+    ("bibliografia_livro", "predicate", "Referência de livro (citar, BEE, nome de obra sozinho)."),
+    ("bibliografia_verbete", "predicate", "Referência de verbetes."),
+    ("lexicons", "predicate", "Consulta lexical de palavra da língua comum (não neologismo)."),
+    ("lista_fontes", "predicate", "Listar as fontes carregadas na conversa."),
+    ("bibliomancia", "predicate", "Ortopensata ao acaso ou Bibliomancia."),
+    ("encyclossapiens", "choice (4)", "Seção kit · enciclopedia · pesquisa, ou nenhum."),
+    ("destino_<área>", "8 × choice", "Um destino do catálogo CCCI por área (mídia, atividades, livros, publicações, verbetes, referência, PGC, institucional), ou nenhum. O melhor entre as áreas vira pill."),
+    ("recurso", "choice (8)", "periodicos · livros_pdf · enciclopedia · quiz · flashcards · consgpt · conslm, ou nenhum."),
+    ("termo", "choice (≤ 255)", "Candidato extraído da mensagem, ou nenhum."),
+    ("trechos_brutos", "predicate", "Só em Citações: pedido explícito de trechos literais."),
+], [3.8, 2.6, 10.0])
+
+doc.add_heading("Limiares", level=2)
+table(["Condição", "Valor", "Constante"], [
+    ("Predicado vira pill", "≥ 0,60", "AGENT_DECISION_THRESHOLD"),
+    ("Escolha com «nenhum» vira pill", "1 − P(nenhum) ≥ 0,60", "AGENT_DECISION_THRESHOLD"),
+    ("Destino CCCI vira pill", "1 − P(nenhum) na área ≥ 0,75", "AGENT_DECISION_CATALOG_MIN"),
+    ("Turno responde direto", "forma social ou lista_fontes ≥ 0,75", "AGENT_DECISION_DIRECT_MIN"),
+    ("Turno vai a corpus (Citações)", "trechos_brutos ≥ 0,70", "—"),
+    ("Obra preenchida", "P(obra) ≥ 0,50", "—"),
+], [5.6, 4.6, 6.2])
+doc.add_paragraph("Nas escolhas com «nenhum», a probabilidade de que ALGUMA opção se aplique é 1 − P(nenhum); qual opção é o argmax das demais. Numa escolha grande a massa se espalha, e o melhor destino pode ter 0,4 com 1 − P(nenhum) = 0,9.")
+
+doc.add_heading("Modalidades de resposta", level=2)
+table(["responseMode", "Quando", "Resposta"], [
+    ("full", "Padrão: toda pergunta, inclusive sobre o próprio ConsBOT.", "Modelo principal; pills ao lado."),
+    ("direct", "Saudação, agradecimento ou despedida inequívocos e sem ação; ou lista_fontes.", "Texto de catálogo; lista local das fontes."),
+    ("corpus", "Só em Citações, com pedido explícito de trechos brutos.", "Recuperação semântica literal."),
+], [2.8, 7.4, 6.2])
 
 doc.add_page_break()
-doc.add_heading("2. Coerência da resposta com os pills", level=1)
+doc.add_heading("2. Regras aplicadas em código", level=1)
+doc.add_paragraph("Precedências que antes dependiam de o modelo lembrar uma regra do prompt agora são aplicadas na interpretação das respostas (src/agent/planner/decisions.ts):")
 for item in [
-    "Em pedido operacional, o Luna escreve introdução curta que descreve o que será aberto.",
-    "São proibidas alegações como “encontrei”, “não encontrei”, “não existe”, contagens ou descrições de resultados antes da consulta ao destino.",
-    "Introdução vazia, longa ou com alegação de resultado é substituída pela frase neutra do catálogo.",
-    "Em full, o modelo principal recebe contexto confiável com serviço, escopo e estado “ainda não consultado”.",
-    "Ausência no RAG atual deve ser formulada como “não localizado nas fontes consultadas nesta resposta”, distinguindo-a de inexistência.",
+    "Busca de termo sem escopo objetivo gera livros e verbetes juntos.",
+    "Obra nomeada restringe a busca aos livros, salvo pedido explícito de verbetes.",
+    "Busca no Conscienciograma suprime as buscas em livros e verbetes.",
+    "Bibliografia de livro vence a busca quando é a leitura mais provável («Citar o Léxico»).",
+    "O recurso periodicos encobre os destinos revistas e publicacoes_ccci.",
+    "Um destino específico do catálogo encobre o recurso genérico: simulado da PGC em vez do quiz, livros em outros idiomas em vez do Drive em português.",
+    "Pedido de referência bibliográfica encobre o catálogo e a autoria de livros; busca no Conscienciograma encobre a página do livro inteiro.",
+    "A Encyclossapiens encobre as listagens de verbetes do catálogo CCCI.",
+    "REGRA GERAL — uma necessidade, uma família de pill: quando a busca de termo e um destino do catálogo disparam juntos, pedido explícito de busca fica com a busca; nos demais, vence o mais provável.",
+    "A mesma regra entre ferramentas próprias e áreas do catálogo: Encyclossapiens encobre a área verbetes, bibliografia de livro encobre a área livros, o recurso periodicos encobre a área publicações.",
+    "A raiz do ICGE nunca vira pill só para haver uma ação.",
+    "Verbetoteca do ICGE nunca aparece junto da busca de verbetes.",
+    "lista_fontes é o turno inteiro: nenhum outro pill.",
+    "Ferramenta que exige termo sem candidato válido não vira pill. No máximo três pills por turno.",
 ]:
     bullet(item)
-doc.add_heading("Exemplos válidos", level=2)
-table(["Ação", "Introdução neutra"], [
-    ("Busca em livros", "A busca literal por “tenepes” nos livros está preparada abaixo."),
-    ("Bibliografia", "A referência de Projeciologia pode ser montada no módulo indicado."),
-    ("Bibliomancia", "O sorteio de uma ortopensata pode ser iniciado pela opção abaixo."),
-    ("ICGE", "A área pertinente do ICGE pode ser aberta abaixo."),
-], [4.2, 12.2])
-doc.add_heading("Apresentação", level=2)
-bullet("No máximo três pills por turno, na mesma linha quando houver espaço.")
-bullet("Fundo branco, rótulo curto, foco visível e descrição completa no atributo title.")
-bullet("Pill de continuidade segue o mesmo padrão visual e permanece controlável no menu ADMIN.")
+
+doc.add_heading("Candidatos a termo", level=2)
+for item in [
+    "Trechos entre aspas primeiro; depois n-gramas de 1 a 6 palavras da mensagem atual; por fim os da pergunta anterior (continuação elíptica).",
+    "Um termo nunca atravessa pontuação de frase e nunca começa nem termina em artigo, preposição, verbo de comando ou palavra que só nomeia o pedido (termo, palavra, livros, verbetes).",
+    "Nome de fonte ou lugar de busca (Conscienciograma, Enciclopédia, Verbetoteca, ICGE, CCCI…) nunca é termo, nem sozinho nem em termo composto, salvo entre aspas. Verbos de autoria e de relação (escreveu, autor, relacionados) também não abrem nem fecham termo.",
+    "Colagens com mais de 60 palavras só usam as 25 primeiras e as 25 últimas: nunca um termo de dentro do bloco.",
+    "Até 254 candidatos, mais «nenhum». A grafia do usuário é preservada; não há correção ortográfica.",
+]:
+    bullet(item)
+
+doc.add_heading("Coerência da resposta com os pills", level=2)
+for item in [
+    "Respostas diretas vêm de catálogo: não existe texto do classificador que possa prometer busca ou afirmar resultado.",
+    "Em full, o modelo principal recebe contexto confiável com serviço, escopo e estado «ainda não consultado».",
+    "Ausência no RAG atual é formulada como «não localizado nas fontes consultadas nesta resposta», distinta de inexistência.",
+]:
+    bullet(item)
 
 doc.add_page_break()
 doc.add_heading("3. Catálogo de capacidades", level=1)
-table(["Intent", "Política", "Finalidade"], [
-    ("search_book", "fulfills_explicit_action", "Busca literal em livros e tratados."),
-    ("search_verbete", "fulfills_explicit_action", "Busca em texto, título, autor ou especialidade."),
-    ("search_conscienciograma", "fulfills_explicit_action", "Busca literal na página própria do CCG."),
-    ("bibliografia_livros", "fulfills_explicit_action", "Referência de livros por sigla."),
-    ("bibliografia_verbetes", "fulfills_explicit_action", "Referências de verbetes."),
-    ("consulta_lexicons", "fulfills_explicit_action", "Consulta padrão em Cosmovisão."),
-    ("bibliomancia", "fulfills_explicit_action", "Sorteio de ortopensata."),
-    ("encyclossapiens", "complementary", "Escrita e submissão de verbetes."),
-    ("icge", "complementary", "Macroáreas institucionais do ICGE."),
-    ("open_resource", "fulfills_explicit_action", "Destino explicitamente pedido."),
-    ("list_sources", "local", "Lista fontes carregadas sem modelo principal."),
+table(["Intent", "Política", "Pergunta que decide"], [
+    ("search_book", "fulfills_explicit_action", "busca_termo + escopo_busca + obra + termo"),
+    ("search_verbete", "fulfills_explicit_action", "busca_termo + escopo_busca + campo_verbete + termo"),
+    ("search_conscienciograma", "fulfills_explicit_action", "busca_conscienciograma + termo"),
+    ("bibliografia_livros", "fulfills_explicit_action", "bibliografia_livro + obra"),
+    ("bibliografia_verbetes", "fulfills_explicit_action", "bibliografia_verbete"),
+    ("consulta_lexicons", "fulfills_explicit_action", "lexicons + termo"),
+    ("bibliomancia", "fulfills_explicit_action", "bibliomancia"),
+    ("encyclossapiens", "complementary", "encyclossapiens"),
+    ("catalogo_ccci", "complementary", "destino_ccci"),
+    ("open_resource", "fulfills_explicit_action", "recurso (+ regras determinísticas)"),
+    ("list_sources", "local", "lista_fontes"),
 ], [4.1, 4.4, 7.9])
-doc.add_heading("Recursos sob open_resource", level=2)
-doc.add_paragraph("Periódicos, Enciclopédia/downloads, livros em PDF, Quiz, Flashcards, ConsGPT e ConsLM. ConsGPT e ConsLM nunca são promovidos espontaneamente.")
+doc.add_paragraph("ConsGPT e ConsLM só aparecem quando o usuário os nomeia. LexiCons sempre abre em Cosmovisão.")
 
-doc.add_page_break()
-doc.add_heading("4. Contratos de deep link", level=1)
+doc.add_heading("Contratos de deep link", level=2)
 table(["Serviço", "Contrato"], [
     ("Livros", "index_search_book.html?q=<termo>&books=<book_code>"),
     ("Verbetes", "index_search_verb.html?q=<termo>&field=<texto|titulo|autor|especialidade>"),
@@ -177,6 +233,7 @@ table(["Serviço", "Contrato"], [
     ("Bibliomancia", "index_mancia.html?autostart=1"),
     ("LexiCons", "?q=<termo>&autostart=1; sem parâmetro de modo"),
 ], [4.6, 11.8])
+
 doc.add_heading("Identificadores de obras", level=2)
 table(["Main-Server", "Cons-IA", "Sigla bibliográfica", "Obra"], [
     ("TEAT", "TEAT", "TEAT", "200 Teáticas"),
@@ -195,66 +252,64 @@ table(["Main-Server", "Cons-IA", "Sigla bibliográfica", "Obra"], [
     ("QUEST", "QUEST", "—", "Questões Mini"),
     ("ZEFIRO", "ZEFIRO", "—", "Zéfiro"),
 ], [3.2, 3.2, 3.4, 6.6])
-doc.add_paragraph("Migração local: 700EXP→EXP; DUPLA→MDE; PROEXIS→MP; TEMAS→TC; 200TEAT→TEAT. O Conscienciograma permanece em página própria.")
 
 doc.add_page_break()
-doc.add_heading("5. ICGE — macroáreas oficiais", level=1)
-table(["area", "Destino", "Página"], [
-    ("", "Página inicial", "icge.org.br"),
-    ("agenda", "Agenda Conscienciologia", "?page_id=6051"),
-    ("instituicoes", "Instituições Conscienciocêntricas", "?page_id=6611"),
-    ("publicacoes", "Publicações da CCCI", "?page_id=1417"),
-    ("enciclopedia", "Verbetoteca", "?page_id=13493"),
-    ("memoria", "Arquivos de Imprensa e Vídeos da CCCI", "?page_id=2585"),
-    ("videos", "Ferramenta de Busca em Vídeos", "?page_id=9973"),
-    ("autopesquisa", "Planilhas de Autopesquisa", "?page_id=1385"),
-    ("holociclo", "Histórico do Holociclo", "?page_id=12238"),
-], [3.2, 8.6, 4.6])
-doc.add_paragraph("Perguntas substantivas usam full com pill específico. Apenas pedidos explícitos como “abra”, “acesse” ou “mostre o site” podem usar action_only. Destinos mais específicos caem na macroárea mais próxima ou na página inicial.")
-
-doc.add_heading("LexiCons", level=2)
-bullet("q + autostart=1 preenche e executa a consulta uma única vez, inclusive sob React Strict Mode.")
-bullet("O hero é ocultado e o modo inicial permanece obrigatoriamente cosmovisao.")
-bullet("Nenhum pill seleciona definição, etimologia ou outro módulo específico.")
+doc.add_heading("4. Catálogo CCCI", level=1)
+doc.add_paragraph("Gerado de CCCI_DESTINATIONS em src/agent/config.ts. A descrição é o texto que o classificador recebe como descrição da opção em destino_ccci: é o que separa cada destino do vizinho.")
+table(["area", "Área", "Rótulo", "Quando usar"], CCCI_ROWS, [3.4, 2.4, 3.4, 7.2])
+doc.add_paragraph("Páginas vetadas do ICGE (page_id 4006, 6051, 1385) nunca viram pill, mesmo reintroduzidas por variável de ambiente.")
+doc.add_paragraph("Origem: mapa completo do icge.org.br em 2026-10-19 (573 páginas pela API do WordPress, 180 úteis). Ficaram de fora as 363 páginas individuais do Quiz, versões antigas ou duplicadas (4623, 4034, 5830, 14106…) e páginas vazias ou protegidas por senha.")
 
 doc.add_page_break()
-doc.add_heading("6. Telemetria e compatibilidade", level=1)
+doc.add_heading("5. Telemetria e fallbacks", level=1)
 for item in [
     "Um turnId comum relaciona decisão, impressão, clique e feedback.",
-    "Registra responseMode proposto/efetivo, confiança global e duração do Luna.",
-    "Cada ação registra confidence, posição, serviço, destino e parâmetros.",
-    "Impressões são deduplicadas por mensagem, intent e URL, mesmo após rerenders.",
-    "Metadata antiga com route/actions continua legível; novos turnos gravam o formato ampliado.",
-    "route permanece no metadata como campo derivado durante a transição.",
+    "reason é um rastro determinístico: forma e probabilidade, busca e escopo, destinos escolhidos, termo e recusas (ex.: decisions · forma=busca_literal(0.95) · busca=1:livros · termo=tenepes).",
+    "classifierResponse guarda as respostas brutas da Decisions API, visíveis no diagnóstico do turno.",
+    "Cada ação registra confidence (probabilidade), posição, serviço, destino e parâmetros.",
+    "O Main-Server registra por chamada: app, ação, número de perguntas, tokens e duração.",
 ]:
     bullet(item)
-doc.add_heading("Fallbacks seguros", level=2)
 table(["Falha", "Comportamento"], [
-    ("Timeout > 6 s", "full"),
-    ("Rede / HTTP", "full"),
-    ("JSON ausente ou inválido", "full"),
-    ("Confiança global inválida", "full"),
-    ("Parâmetro ou destino fora do enum", "Ação descartada ou valor seguro; nunca URL arbitrária"),
-], [6.0, 10.4])
+    ("/api/decisions responde 404/405 (Main-Server antigo)", "Classificador antigo pelo resto da sessão."),
+    ("OpenAI responde 403 / not enabled", "Classificador antigo pelo resto da sessão."),
+    ("Timeout, rede ou outro erro HTTP", "Classificador antigo neste turno."),
+    ("Recusa em uma pergunta", "As demais seguem valendo; a recusa entra no reason."),
+    ("Classificador antigo também falha", "full, sem pills."),
+    ("Triagem passa de 3 s", "Turno segue em full; pills entram quando chegarem."),
+], [7.2, 9.2])
+doc.add_paragraph("O classificador antigo envia app=consbot-agent ao /api/llm, para não herdar o override de modelo e esforço do ConsBOT.")
 
 doc.add_page_break()
-doc.add_heading("7. Verificação e critérios de aceitação", level=1)
-for item in [
-    "Nenhum pill aponta para fonte, filtro ou bibliografia diferente do rótulo.",
-    "Nenhuma pergunta substantiva é substituída por navegação.",
-    "Nenhuma introdução afirma resultados de consulta não realizada.",
-    "LexiCons sempre abre em Cosmovisão.",
-    "ICGE abre uma das oito macroáreas ou a página inicial.",
-    "Erro ou timeout do Luna sempre termina em full.",
-]:
-    bullet(item)
-doc.add_heading("Cobertura automatizada", level=2)
-doc.add_paragraph("OminIA: modalidades, confiança global/ação, coerência, contexto do modelo principal, URLs, ICGE e compatibilidade. Cons-IA: migração de códigos e campos estruturados. LexiCons: q + autostart, Cosmovisão fixa e proteção de execução única.")
-doc.add_heading("Suíte ao vivo", level=2)
-doc.add_paragraph("Avalia separadamente modalidade de resposta, intent, parâmetros e URL. Inclui positivos, negativos, multi-intent, anáforas, erros de digitação, português/inglês, prompt injection, ICGE e recursos explícitos. A presença de pill não implica direct.")
+doc.add_heading("6. Verificação", level=1)
+table(["Comando", "O que mede"], [
+    ("npm test", "Unitários: questionário dentro dos limites da API, candidatos a termo, interpretação das respostas, precedências, fallback de modo."),
+    ("npm run agent:suite", "Suíte real contra o Main-Server (Decisions)."),
+    ("npm run agent:suite -- --engine responses", "Mesma suíte no classificador antigo, para comparação."),
+    ("npm run agent:suite -- --ficha controle", "20 frases escritas depois da calibragem."),
+    ("npm run agent:suite -- --verbose", "Rastro de decisão de todos os casos."),
+    ("npm run agent:suite -- --ficha controle_icge", "10 frases dos destinos novos, escritas antes da calibragem."),
+    ("npm run agent:suite -- --ficha controle3", "12 frases escritas depois das regras gerais, para medir se generalizam."),
+    ("npm run agent:suite -- --timing after", "Pills decididos depois da resposta, com o texto respondido como entrada."),
+], [6.4, 10.0])
+doc.add_heading("Resultado da migração (2026-10-19, 3 execuções por caso)", level=2)
+table(["Métrica", "Responses (antigo)", "Decisions (novo)"], [
+    ("Casos estáveis nas fichas (87)", "64", "87"),
+    ("Casos instáveis entre execuções", "11", "0"),
+    ("Ações indevidas", "32 em 96", "0 em 96"),
+    ("Perguntas engolidas por direct", "3", "0"),
+    ("Ficha controle, primeira passada (20)", "19", "19"),
+    ("Latência p50 / p90", "2,9 s / 15,5 s", "0,27 s / 0,40 s"),
+], [6.4, 5.0, 5.0])
+doc.add_heading("Pills depois da resposta (avaliado e não adotado, 2026-10-19)", level=2)
+doc.add_paragraph("Testou-se decidir os pills depois da resposta, com o texto respondido como entrada. Sobre respostas reais do app, ficou em 100 de 107 casos, contra 107 decidindo com a triagem; a ficha controle empatou em 20/20. Quando a resposta já explica o termo ou lista as instituições, o modelo larga o pill que o usuário pediu. O código e a medição ficaram disponíveis (--timing after).")
+doc.add_heading("Catálogo CCCI ampliado (2026-10-19)", level=2)
+doc.add_paragraph("Regras gerais para os erros do controle cego: catálogo dividido em oito perguntas por área; nome de fonte nunca é termo; catálogo e busca disputam a mesma necessidade. Suíte com 130 casos, 3 execuções: 130 estáveis e 0 ações indevidas em 111 execuções. Controle novo (controle3, 12 frases escritas depois das regras): 11/12; a falha é limítrofe («Explique o que é um Colégio Invisível» ficou sem o destino).")
+doc.add_paragraph("Versão anterior, de 27 para 63 destinos. Suíte com 130 casos: 127 estáveis, 0 instáveis, 0 ações indevidas em 111 execuções; ficha icge 13/13; ficha controle_icge 8/10 (falhas: verbetes relacionados a um tema e ranking de verbetógrafos acompanhado de busca indevida).")
+doc.add_paragraph("As fichas serviram para calibrar o questionário; a ficha controle mostra que, fora da amostra, a precisão empata. O ganho real está em estabilidade, ausência de pills espúrios e latência. Limitação conhecida nos dois motores: grafia errada do termo não é corrigida.")
 
-doc.core_properties.title = "Agent Mode — Clássico"
-doc.core_properties.subject = "Regras e contratos do classificador ConsBOT Luna"
+doc.core_properties.title = "Agent Mode"
+doc.core_properties.subject = "Regras e contratos do classificador ConsBOT (Decisions API)"
 doc.core_properties.author = "ConsBOT"
 doc.save(OUTPUT)
 print(OUTPUT)

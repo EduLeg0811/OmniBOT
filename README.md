@@ -30,7 +30,10 @@ VITE_MAIN_SERVER_URL=http://127.0.0.1:8000
 VITE_ACCESS_LEVEL=0
 ```
 
-Rode o Main-Server separadamente (veja o repositório dele). `VITE_ACCESS_LEVEL=1`
+Rode o Main-Server separadamente (veja o repositório dele). O classificador do
+módulo AGENT usa a rota `/api/decisions` (OpenAI Decisions API); com um
+Main-Server sem essa rota ele volta sozinho ao caminho antigo por `/api/llm`.
+`VITE_AGENT_CLASSIFIER_ENGINE=responses` força o caminho antigo. `VITE_ACCESS_LEVEL=1`
 libera os controles de admin (modelo, effort, verbosity, vector store, max
 tokens) sem depender de `localhost`.
 
