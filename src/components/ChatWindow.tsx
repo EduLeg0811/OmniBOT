@@ -35,6 +35,7 @@ import {
 } from "@/lib/chat-settings";
 import { MAX_CONTEXT_RECENT_TURNS, trimMessagesForContext } from "@/lib/chat-store";
 import { API_BASE } from "@/lib/main-server";
+import { stripCitations } from "@/lib/citations";
 import { logFeatureAccess } from "@/lib/access-log";
 import { extractTechnicalErrorDetails, showLlmUnavailableToast } from "@/lib/error-capture";
 import {
@@ -45,6 +46,7 @@ import {
   buildAgentResponseContext,
   directAgent,
   executeAgentAction,
+  extractCitationActions,
   withoutRepeatedActions,
   sourceListAnswer,
   sourceListErrorAnswer,
@@ -351,11 +353,13 @@ function lastAssistantText(messages: ConsBotUIMessage[]): string | undefined {
     const message = messages[index];
     if (message?.role !== "assistant") continue;
 
-    const text = message.parts
+    const raw = message.parts
       .filter((part) => part.type === "text")
       .map((part) => (part.type === "text" ? part.text : ""))
       .join(" ")
       .trim();
+
+    const text = stripCitations(raw);
 
     if (text) return text;
   }
@@ -364,11 +368,13 @@ function lastAssistantText(messages: ConsBotUIMessage[]): string | undefined {
 }
 
 function getMessageText(message: ConsBotUIMessage): string {
-  return message.parts
+  const raw = message.parts
     .filter((part) => part.type === "text")
     .map((part) => (part as { text: string }).text)
     .join("\n")
     .trim();
+
+  return message.role === "assistant" ? stripCitations(raw) : raw;
 }
 
 function followUpHistory(messages: ConsBotUIMessage[]): AgentFollowUpHistoryTurn[] {
@@ -623,12 +629,21 @@ export function ChatWindow({
         prepareSendMessagesRequest: async ({ messages }) => {
           const vectorStores = vectorStoresFor(settingsRef.current.vectorStoreId);
           const trimmed = trimMessagesForContext(messages, MAX_CONTEXT_RECENT_TURNS);
+          const sanitized = trimmed.map((message) => {
+            if (message.role !== "assistant") return message;
+            return {
+              ...message,
+              parts: message.parts.map((part) =>
+                part.type === "text" ? { ...part, text: stripCitations(part.text) } : part,
+              ),
+            };
+          });
           return {
             body: {
               // Main-Server takes plain role/content messages, not UIMessage[]
               // — the same conversion the removed /api/chat function used to
               // do server-side, now run here before the request leaves the browser.
-              messages: await convertToModelMessages(trimmed),
+              messages: await convertToModelMessages(sanitized),
               model: settingsRef.current.model,
               systemPrompt: [
                 buildSystemPrompt(settingsRef.current),
@@ -941,7 +956,16 @@ export function ChatWindow({
 
   useEffect(() => {
     if (!restoredRef.current || isBusy) return;
-    changeRef.current(messages);
+    const sanitized = messages.map((message) => {
+      if (message.role !== "assistant") return message;
+      return {
+        ...message,
+        parts: message.parts.map((part) =>
+          part.type === "text" ? { ...part, text: stripCitations(part.text) } : part,
+        ),
+      };
+    });
+    changeRef.current(sanitized);
   }, [messages, isBusy]);
 
   useEffect(() => {
@@ -974,6 +998,24 @@ export function ChatWindow({
     // o texto dela alinharia a pergunta desta rodada com a resposta da anterior.
     const isFresh = Boolean(lastAssistant) && lastAssistant?.id !== baselineAssistantIdRef.current;
     const assistantText = isFresh && lastAssistant ? getMessageText(lastAssistant) : "";
+    if (isFresh && lastAssistant) {
+      const precedingUser = [...messages].reverse().find((message) => message.role === "user");
+      const userText = precedingUser ? getMessageText(precedingUser) : "";
+      const citationActions = extractCitationActions({
+        assistantText,
+        userQuestion: userText,
+        destination: settingsRef.current.agent.pillDestination ?? "cons-ia",
+        english: isEnglish,
+        existingActions: pendingAgentPillsRef.current,
+        turnId: precedingUser?.id,
+      });
+      if (citationActions.length > 0) {
+        pendingAgentPillsRef.current = [
+          ...pendingAgentPillsRef.current,
+          ...pillsForAudit(citationActions),
+        ];
+      }
+    }
     const followUpContext = pendingFollowUpRef.current;
     pendingFollowUpRef.current = null;
     streamStartedRef.current = false;
@@ -1858,11 +1900,9 @@ export function ChatWindow({
   const latestAssistantMessage = [...messages]
     .reverse()
     .find((message) => message.role === "assistant");
-  const latestAssistantText = latestAssistantMessage?.parts
-    .filter((part) => part.type === "text")
-    .map((part) => (part as { text: string }).text)
-    .join("\n")
-    .trim();
+  const latestAssistantText = latestAssistantMessage
+    ? getMessageText(latestAssistantMessage)
+    : "";
 
   const copyLatestResponse = async () => {
     if (!latestAssistantText) return;
@@ -2111,11 +2151,15 @@ export function ChatWindow({
                           );
                         }
                         if (part.type === "text") {
+                          const stripped =
+                            message.role === "assistant"
+                              ? stripCitations(part.text)
+                              : part.text;
                           const text =
                             message.role === "assistant" &&
                             settings.responseFormat === "conscienciological"
-                              ? normalizeConscienciologicalLists(part.text)
-                              : part.text;
+                              ? normalizeConscienciologicalLists(stripped)
+                              : stripped;
 
                           return (
                             <MessageResponse
@@ -2172,6 +2216,7 @@ export function ChatWindow({
                         settings={settings.agent}
                         host={agentHost}
                         userMessage={precedingUser}
+                        assistantMessage={message}
                         followUpQuestion={visibleFollowUpQuestion ?? undefined}
                         showExternalActions={classicAgentTurn}
                         disabled={isBusy}

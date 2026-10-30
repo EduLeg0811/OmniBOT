@@ -66,6 +66,7 @@ describe("chat settings", () => {
       prompt: "",
       presentation: "classic",
       followUpSuggestions: true,
+      pillDestination: "cons-ia",
     });
   });
 
@@ -102,6 +103,7 @@ describe("chat settings", () => {
       prompt: "",
       presentation: "classic",
       followUpSuggestions: true,
+      pillDestination: "cons-ia",
     });
   });
 
@@ -133,6 +135,10 @@ describe("chat settings", () => {
       normalizeAgentSettings({ enabled: true, prompt: "", presentation: "citations" }).presentation,
     ).toBe("citations");
     expect(normalizeAgentSettings({ enabled: true, prompt: "" }).followUpSuggestions).toBe(true);
+    expect(normalizeAgentSettings({ enabled: true, prompt: "" }).pillDestination).toBe("cons-ia");
+    expect(
+      normalizeAgentSettings({ enabled: true, prompt: "", pillDestination: "consteca" }).pillDestination,
+    ).toBe("consteca");
   });
 
   it("acrescenta 200 palavras à meta quando o formato for conscienciological", () => {

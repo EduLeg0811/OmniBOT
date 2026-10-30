@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { stripCitations } from "@/lib/citations";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
@@ -96,11 +97,13 @@ export const ConversationScrollButton = ({
   );
 };
 
-const getMessageText = (message: UIMessage): string =>
-  message.parts
+const getMessageText = (message: UIMessage): string => {
+  const text = message.parts
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+  return message.role === "assistant" ? stripCitations(text) : text;
+};
 
 export type ConversationDownloadProps = Omit<ComponentProps<typeof Button>, "onClick"> & {
   messages: UIMessage[];

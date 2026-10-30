@@ -56,8 +56,13 @@ export {
   type AgentFollowUpPayload,
 } from "@/agent/follow-up";
 export {
+  extractCitationActions,
+  type CitationExtractionOptions,
+} from "@/agent/citations-extractor";
+export {
   AGENT_SETTINGS_DEFAULT,
   normalizeAgentSettings,
+  type AgentPillDestination,
   type AgentPresentation,
   type AgentSettings,
 } from "@/agent/settings";

@@ -62,6 +62,47 @@ export function AgentSettingsSection({ value, onChange, isAdmin, english }: Prop
             </SwitchPrimitives.Root>
           </div>
 
+          <div className="space-y-2 rounded-lg border border-border/70 bg-card/80 p-3">
+            <div>
+              <label className="text-[11px] font-medium text-foreground">
+                Destino das buscas sugeridas (Pills)
+              </label>
+              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                Define para onde apontam os pills de verbetes e livros citados na resposta.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => set({ pillDestination: "cons-ia" })}
+                className={`flex flex-col items-start rounded-md border p-2 text-left transition-colors ${
+                  value.pillDestination !== "consteca"
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border/60 bg-background/50 text-muted-foreground hover:bg-background"
+                }`}
+              >
+                <span className="text-[10px] font-semibold">Opção B (Padrão)</span>
+                <span className="text-[9px] leading-tight text-muted-foreground">
+                  Ferramentas Cons-IA (externas)
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => set({ pillDestination: "consteca" })}
+                className={`flex flex-col items-start rounded-md border p-2 text-left transition-colors ${
+                  value.pillDestination === "consteca"
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border/60 bg-background/50 text-muted-foreground hover:bg-background"
+                }`}
+              >
+                <span className="text-[10px] font-semibold">Opção A</span>
+                <span className="text-[9px] leading-tight text-muted-foreground">
+                  ConsTECA (busca interna)
+                </span>
+              </button>
+            </div>
+          </div>
+
           <label className="block text-[10px] font-medium text-foreground" htmlFor="agent-prompt">
             Prompt avançado de Luna
           </label>

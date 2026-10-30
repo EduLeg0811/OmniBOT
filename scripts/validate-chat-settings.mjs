@@ -14,6 +14,7 @@ const source = rawSource
     prompt: "",
     presentation: "classic",
     followUpSuggestions: true,
+    pillDestination: "cons-ia",
   };
   const normalizeAgentSettings = (value) => ({
     enabled: typeof value?.enabled === "boolean" ? value.enabled : AGENT_SETTINGS_DEFAULT.enabled,
@@ -23,6 +24,7 @@ const source = rawSource
       typeof value?.followUpSuggestions === "boolean"
         ? value.followUpSuggestions
         : AGENT_SETTINGS_DEFAULT.followUpSuggestions,
+    pillDestination: value?.pillDestination === "consteca" ? "consteca" : "cons-ia",
   });`,
   )
   .replace(

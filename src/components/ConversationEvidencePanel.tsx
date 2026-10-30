@@ -12,6 +12,7 @@ import { AgentActions, type AgentHost, type AgentSettings } from "@/agent";
 import { SemanticCitationsCard } from "@/components/SemanticCitationsCard";
 import { Button } from "@/components/ui/button";
 import type { ConsBotUIMessage } from "@/lib/audit-log";
+import { stripCitations } from "@/lib/citations";
 import { semanticContextFromMetadata } from "@/lib/semantic-context";
 
 type Props = {
@@ -144,10 +145,12 @@ export function ConversationEvidencePanel({
           <SemanticCitationsCard
             key={`${assistant.id}-semantic`}
             context={context}
-            assistantText={assistant.parts
-              .filter((part) => part.type === "text")
-              .map((part) => (part.type === "text" ? part.text : ""))
-              .join("\n")}
+            assistantText={stripCitations(
+              assistant.parts
+                .filter((part) => part.type === "text")
+                .map((part) => (part.type === "text" ? part.text : ""))
+                .join("\n"),
+            )}
             question={user.parts
               .filter((part) => part.type === "text")
               .map((part) => (part.type === "text" ? part.text : ""))

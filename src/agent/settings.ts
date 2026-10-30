@@ -1,6 +1,7 @@
 import { AGENT_MODE } from "@/agent/config";
 
 export type AgentPresentation = "citations" | "classic";
+export type AgentPillDestination = "cons-ia" | "consteca";
 
 /** Preferências do módulo AGENT, guardadas pelo hospedeiro.
  *
@@ -18,6 +19,8 @@ export type AgentSettings = {
   presentation: AgentPresentation;
   /** Gera uma pergunta curta e ancorada após respostas substantivas em modo full. */
   followUpSuggestions: boolean;
+  /** Destino das buscas abertas pelos pills: Cons-IA (externo) ou ConsTECA (interno). */
+  pillDestination?: AgentPillDestination;
 };
 
 export const AGENT_SETTINGS_DEFAULT: AgentSettings = {
@@ -25,6 +28,7 @@ export const AGENT_SETTINGS_DEFAULT: AgentSettings = {
   prompt: "",
   presentation: "classic",
   followUpSuggestions: true,
+  pillDestination: "cons-ia",
 };
 
 /** Compatibilidade com preferências salvas antes da apresentação ser configurável. */
@@ -42,5 +46,6 @@ export function normalizeAgentSettings(
       typeof value?.followUpSuggestions === "boolean"
         ? value.followUpSuggestions
         : AGENT_SETTINGS_DEFAULT.followUpSuggestions,
+    pillDestination: value?.pillDestination === "consteca" ? "consteca" : "cons-ia",
   };
 }
