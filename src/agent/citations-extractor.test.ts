@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   extractCitationActions,
-  extractCitedBooks,
   extractCitedVerbetes,
+  extractSubstantiveBookCitations,
 } from "./citations-extractor";
 
-describe("citations-extractor", () => {
-  it("extrai título de verbete citado no texto entre asteriscos ou aspas", () => {
+describe("citations-extractor (estratégia de relevância e não-redundância)", () => {
+  it("extrai título de verbete citado explicitamente", () => {
     const text =
       "Conforme analisado no verbete *Autolucidez*, a consciência lúcida mantém foco continuado.";
     const verbetes = extractCitedVerbetes(text);
@@ -24,71 +24,91 @@ describe("citations-extractor", () => {
     expect(verbetes).toContain("Cosmoética");
   });
 
-  it("extrai livro canônico citado e trecho entre aspas próximo", () => {
+  it("NÃO gera pill para livro apenas por menção casual do nome sem citação textual", () => {
+    const text =
+      "Waldo Vieira tratou deste princípio ao longo de sua obra, incluindo 700 Experimentos e Projeciologia.";
+    const citations = extractSubstantiveBookCitations(text);
+    // Sem aspas ou capítulo/experimento, não deve gerar citação substantiva
+    expect(citations).toHaveLength(0);
+
+    const actions = extractCitationActions({
+      assistantText: text,
+      userQuestion: "O que é holossoma?",
+    });
+    // Não deve indicar pills apenas por obrigação!
+    expect(actions).toHaveLength(0);
+  });
+
+  it("gera pill para livro quando houver citação textual substantiva entre aspas", () => {
     const text = `
-No tratado 700 Experimentos da Conscienciologia, o autor detalha a "decolagem lúcida" como fenômeno inicial.
+No tratado 700 Experimentos da Conscienciologia, o autor define o fenômeno como "decolagem lúcida assistida", essencial no desenvolvimento.
 `;
-    const books = extractCitedBooks(text);
-    expect(books.length).toBeGreaterThanOrEqual(1);
-    const exp = books.find((b) => b.book.mainServerSourceId === "EXP");
-    expect(exp).toBeDefined();
-    expect(exp?.term).toBe("decolagem lúcida");
-  });
+    const citations = extractSubstantiveBookCitations(text);
+    expect(citations).toHaveLength(1);
+    expect(citations[0]?.book.mainServerSourceId).toBe("EXP");
+    expect(citations[0]?.quotedSnippet).toBe("decolagem lúcida assistida");
 
-  it("gera pills para Opção B (Cons-IA) por padrão", () => {
-    const assistantText = `
-O tema é aprofundado no verbete *Autolucidez* e na obra Projeciologia, especificamente quanto ao "estado vibracional".
-`;
     const actions = extractCitationActions({
-      assistantText,
+      assistantText: text,
       destination: "cons-ia",
     });
-
-    const verbeteAction = actions.find((a) => a.id === "search_verbete");
-    expect(verbeteAction).toBeDefined();
-    expect(verbeteAction?.href).toContain("https://cons-ia.org/index_search_verb.html");
-    expect(verbeteAction?.href).toContain("fields=titulo");
-    expect(verbeteAction?.service).toBe("Cons-IA");
-
-    const bookAction = actions.find((a) => a.id === "search_book");
-    expect(bookAction).toBeDefined();
-    expect(bookAction?.href).toContain("https://cons-ia.org/index_search_book.html");
-    expect(bookAction?.href).toContain("books=PROJ");
-    expect(bookAction?.service).toBe("Cons-IA");
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.label).toContain('700 Exp.: "decolagem lúcida assistida"');
+    expect(actions[0]?.href).toContain("books=EXP");
+    expect(actions[0]?.href).toMatch(/q=decolagem(?:\+|%20)l%C3%BAcida(?:\+|%20)assistida/);
   });
 
-  it("gera pills para Opção A (ConsTECA) quando configurado", () => {
-    const assistantText = `
-Consulte o verbete *Autolucidez* e o Léxico de Ortopensatas.
+  it("gera pill para livro com capítulo/experimento específico", () => {
+    const text =
+      "Conforme detalhado no livro Projeciologia (capítulo 120), a exteriorização de energias...";
+    const citations = extractSubstantiveBookCitations(text);
+    expect(citations).toHaveLength(1);
+    expect(citations[0]?.quotedSnippet).toBe("capítulo 120");
+  });
+
+  it("evita redundância quando o verbete é a própria pergunta do usuário e já tem ação planejada", () => {
+    const text = "O verbete *Pensene* define a unidade de manifestação consciencial.";
+    const actions = extractCitationActions({
+      assistantText: text,
+      userQuestion: "O que é pensene?",
+      existingActions: [
+        {
+          id: "search_verbete",
+          href: "https://cons-ia.org/index_search_verb.html?q=pensene",
+          meta: { term: "pensene" },
+        },
+      ],
+    });
+    // Já existe pill para pensene no turno, não duplica
+    expect(actions).toHaveLength(0);
+  });
+
+  it("permite sugerir novo verbete relevante e complementar que difere da pergunta", () => {
+    const text =
+      "Sobre a tenepes, vale pesquisar o verbete *Ofiex*, que aprofunda a interface interassistencial.";
+    const actions = extractCitationActions({
+      assistantText: text,
+      userQuestion: "Como começar a praticar tenepes?",
+      existingActions: [
+        {
+          id: "search_verbete",
+          href: "https://cons-ia.org/index_search_verb.html?q=tenepes",
+          meta: { term: "tenepes" },
+        },
+      ],
+    });
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.label).toBe("Verbete: Ofiex");
+  });
+
+  it("limita rigorosamente a no máximo 2 pills por turno para não poluir", () => {
+    const text = `
+No verbete *Autolucidez* e no verbete *Cosmoética*, além do verbete *Macrossoma* e do verbete *Desperticidade*, há vasta fundamentação.
 `;
     const actions = extractCitationActions({
-      assistantText,
-      destination: "consteca",
+      assistantText: text,
+      userQuestion: "Conceitos fundamentais",
     });
-
-    const verbeteAction = actions.find((a) => a.id === "search_verbete");
-    expect(verbeteAction).toBeDefined();
-    expect(verbeteAction?.href).toBe(
-      "/search?q=Autolucidez&sources=enciclopedia&type=literal",
-    );
-    expect(verbeteAction?.service).toBe("ConsTECA");
-
-    const bookAction = actions.find((a) => a.id === "search_book");
-    expect(bookAction).toBeDefined();
-    expect(bookAction?.href).toContain("/search?q=");
-    expect(bookAction?.href).toContain("sources=lo");
-    expect(bookAction?.service).toBe("ConsTECA");
-  });
-
-  it("deduplica pills já existentes em existingActions", () => {
-    const assistantText = "Consulte o verbete *Autolucidez*.";
-    const existingHref = "https://cons-ia.org/index_search_verb.html?q=Autolucidez&fields=titulo";
-    const actions = extractCitationActions({
-      assistantText,
-      destination: "cons-ia",
-      existingActions: [{ id: "search_verbete", href: existingHref }],
-    });
-    expect(actions.find((a) => a.href === existingHref)).toBeUndefined();
+    expect(actions.length).toBeLessThanOrEqual(2);
   });
 });
-
