@@ -2,10 +2,18 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, convertToModelMessages } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowUp, Copy, Database, RefreshCw, Share2, ThumbsUp } from "lucide-react";
+import { ArrowUp, Copy, Database, RefreshCw, Share2, Sparkles, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   Conversation,
@@ -497,6 +505,19 @@ export function ChatWindow({
   );
   const preparationAbortRef = useRef<AbortController | null>(null);
   const preparationCancelledRef = useRef(false);
+  const [disclaimerModalOpen, setDisclaimerModalOpen] = useState(false);
+  const [isDisclaimerHovered, setIsDisclaimerHovered] = useState(false);
+
+  useEffect(() => {
+    if (!disclaimerModalOpen || isDisclaimerHovered) return;
+
+    const timer = setTimeout(() => {
+      setDisclaimerModalOpen(false);
+    }, 20000);
+
+    return () => clearTimeout(timer);
+  }, [disclaimerModalOpen, isDisclaimerHovered]);
+
   const pendingEchoIdRef = useRef<string | null>(null);
   const pendingAgentPillsRef = useRef<AgentPillMetadata[]>([]);
   const pendingAgentResponseContextRef = useRef("");
@@ -2398,13 +2419,141 @@ export function ChatWindow({
               </span>
             </div>
           ) : null}
-          <p className="mt-1.5 text-center text-[10.5px] leading-relaxed text-muted-foreground/50">
-            {isEnglish
-              ? "ConsBOT can make mistakes. Apply the Disbelief Principle and verify with original sources."
-              : "O ConsBOT pode cometer erros. Aplique o Princípio da Descrença e consulte as fontes originais."}
-          </p>
+          <div className="mt-1.5 flex justify-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsDisclaimerHovered(false);
+                setDisclaimerModalOpen(true);
+              }}
+              className="group inline-flex items-center justify-center text-center text-[10.5px] leading-relaxed text-muted-foreground/60 transition-colors hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md px-2 py-0.5"
+              title={
+                isEnglish
+                  ? "Click to learn more about AI probabilistic nature and the Disbelief Principle"
+                  : "Clique para entender a natureza probabilística da IA e o Princípio da Descrença"
+              }
+            >
+              <span className="decoration-muted-foreground/40 underline-offset-2 group-hover:underline">
+                {isEnglish
+                  ? "ConsBOT can make mistakes. Apply the Disbelief Principle and verify with original sources."
+                  : "O ConsBOT pode cometer erros. Aplique o Princípio da Descrença e consulte as fontes originais."}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
+
+      <Dialog open={disclaimerModalOpen} onOpenChange={setDisclaimerModalOpen}>
+        <DialogContent
+          className="max-h-[90vh] max-w-xl overflow-y-auto border-border bg-card p-6 shadow-xl sm:rounded-2xl"
+          onMouseEnter={() => setIsDisclaimerHovered(true)}
+          onMouseLeave={() => setIsDisclaimerHovered(false)}
+        >
+          <DialogHeader className="space-y-1.5 text-left">
+            <div className="flex items-center gap-1.5 text-primary">
+              <Sparkles className="size-4" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider">
+                {isEnglish ? "Transparency & Critical Sense" : "Transparência & Senso Crítico"}
+              </span>
+            </div>
+            <DialogTitle className="text-lg font-bold text-foreground">
+              {isEnglish
+                ? "Artificial Intelligence & the Disbelief Principle"
+                : "Inteligência Artificial & Princípio da Descrença"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {isEnglish
+                ? "How ConsBOT operates and why critical verification is indispensable."
+                : "Como o ConsBOT opera e por que a checagem crítica é indispensável."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Card em destaque: Princípio da Descrença */}
+          <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 text-center sm:text-left">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+              {isEnglish ? "The Disbelief Principle" : "Princípio da Descrença"}
+            </p>
+            <p className="mt-1 text-sm font-medium italic leading-relaxed text-foreground">
+              {isEnglish
+                ? "“Do not believe in anything, not even in what you are told here. Experiment. Have your own experiences.”"
+                : "“Não acredite em nada, nem mesmo no que lhe informarem aqui. Experimente. Tenha suas próprias experiências.”"}
+            </p>
+            <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
+              — Waldo Vieira
+            </p>
+          </div>
+
+          <div className="space-y-4 text-xs leading-relaxed text-muted-foreground">
+            <div>
+              <h4 className="mb-1 text-xs font-semibold text-foreground">
+                {isEnglish
+                  ? "1. The Probabilistic Nature of Language Models"
+                  : "1. A Natureza Estatística dos Modelos de IA"}
+              </h4>
+              <p>
+                {isEnglish
+                  ? "ConsBOT is built on Large Language Models (LLMs). These networks do not possess consciousness, beliefs, or autonomous understanding: they generate responses through statistical token prediction, calculated from patterns learned during training and sources retrieved from the knowledge base."
+                  : "O ConsBOT é construído sobre grandes modelos de linguagem (LLMs). Essas redes neurais não possuem consciência, crença ou discernimento próprio: operam calculando probabilidades estatísticas de palavras a partir de padrões aprendidos no treinamento e dos documentos recuperados da base."}
+              </p>
+            </div>
+
+            <div>
+              <h4 className="mb-1 text-xs font-semibold text-foreground">
+                {isEnglish
+                  ? "2. What are AI Hallucinations?"
+                  : "2. O que é a «Alucinação» na IA?"}
+              </h4>
+              <p>
+                {isEnglish
+                  ? "A hallucination (or confabulation) occurs when an AI generates factually incorrect information, invented citations, or spurious conceptual associations with an apparent tone of certainty and erudition. All generative AI models today hallucinate — this is an intrinsic trait of contemporary probabilistic architecture."
+                  : "Alucinação (ou confabulação) é a geração de informações factualmente incorretas, citações inventadas ou conexões conceituais espúrias com aparência convincente de certeza. Todas as inteligências artificiais da atualidade alucinam — trata-se de um limite inerente à arquitetura probabilística contemporânea."}
+              </p>
+            </div>
+
+            <div>
+              <h4 className="mb-1 text-xs font-semibold text-foreground">
+                {isEnglish
+                  ? "3. The Importance of Consulting Reference Works"
+                  : "3. A Necessidade de Checagem nas Obras de Referência"}
+              </h4>
+              <p>
+                {isEnglish
+                  ? "Even though ConsBOT employs document retrieval (RAG) over Waldo Vieira's corpus and the Encyclopedia of Conscientiology, no AI-generated response should be accepted uncritically. It serves as an initial research catalyst, never as a final authority or dogma."
+                  : "Mesmo com recursos de recuperação documental (RAG) aplicados às obras de Waldo Vieira e aos verbetes da Enciclopédia da Conscienciologia, nenhuma resposta gerada por IA deve ser aceita acriticamente. Ela deve servir como estímulo inicial à pesquisa, nunca como autoridade final."}
+              </p>
+            </div>
+
+            <div>
+              <h4 className="mb-1 text-xs font-semibold text-foreground">
+                {isEnglish
+                  ? "4. Scientific & Conscientiological Stance"
+                  : "4. Postura Conscienciológica Lúcida"}
+              </h4>
+              <p>
+                {isEnglish
+                  ? "Always cross-reference with primary sources, read the treatises, inspect cited entries, and cultivate self-research. In Conscientiology, the definitive laboratory is your own practical, bioenergetic, and cosmoethical experience."
+                  : "Confronte sempre as informações com as fontes originais, leia os tratados, consulte os verbetes e aplique o autoestudo lúcido. Na Conscienciologia, o laboratório definitivo é a sua própria experiência prática, bioenergética e cosmoética."}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-2 flex items-center justify-between gap-3 border-t border-border/60 pt-3 sm:justify-between">
+            <span className="text-[10px] text-muted-foreground/75">
+              {isEnglish
+                ? "Closes automatically in a few seconds, or click outside."
+                : "Fecha automaticamente em instantes ou ao clicar fora."}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 rounded-lg px-4 text-xs font-medium"
+              onClick={() => setDisclaimerModalOpen(false)}
+            >
+              {isEnglish ? "Understood" : "Compreendido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
