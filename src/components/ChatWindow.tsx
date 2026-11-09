@@ -581,17 +581,6 @@ export function ChatWindow({
     }),
     [isEnglish, onAuditInteraction, settings.vectorStoreId, threadId],
   );
-  const profileLabel = activeProfile?.label ?? "Introdutor";
-  const formatLabel =
-    settings.responseFormat === "conscienciological"
-      ? isEnglish
-        ? "Conscientiological Confor"
-        : "Confor Conscienciológico"
-      : isEnglish
-        ? "ChatGPT style"
-        : "estilo ChatGPT";
-
-  const llmParameters = [profileLabel, formatLabel];
 
   useEffect(() => {
     if (settings.vectorStoreId === "none" || sourceCounts[settings.vectorStoreId] !== undefined) {
@@ -2396,24 +2385,19 @@ export function ChatWindow({
               </PromptInputSubmit>
             </div>
           </PromptInput>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-2 text-[11px] text-muted-foreground/60">
-            <div>
-              {input.length > MAX_PROMPT_LENGTH * 0.7 ? (
-                <span
-                  className={
-                    isOverLimit ? "font-semibold text-destructive" : "text-muted-foreground"
-                  }
-                >
-                  {input.length.toLocaleString()} / {MAX_PROMPT_LENGTH.toLocaleString()}{" "}
-                  {isEnglish ? "characters" : "caracteres"}
-                  {isOverLimit && (isEnglish ? " (limit exceeded)" : " (limite excedido)")}
-                </span>
-              ) : null}
+          {input.length > MAX_PROMPT_LENGTH * 0.7 ? (
+            <div className="mt-2 px-2 text-[11px] text-muted-foreground/60">
+              <span
+                className={
+                  isOverLimit ? "font-semibold text-destructive" : "text-muted-foreground"
+                }
+              >
+                {input.length.toLocaleString()} / {MAX_PROMPT_LENGTH.toLocaleString()}{" "}
+                {isEnglish ? "characters" : "caracteres"}
+                {isOverLimit && (isEnglish ? " (limit exceeded)" : " (limite excedido)")}
+              </span>
             </div>
-            <p className="ml-auto text-right leading-relaxed sm:leading-none">
-              {llmParameters.join("  ●  ")}
-            </p>
-          </div>
+          ) : null}
           <p className="mt-1.5 text-center text-[10.5px] leading-relaxed text-muted-foreground/50">
             {isEnglish
               ? "ConsBOT can make mistakes. Apply the Disbelief Principle and verify with original sources."

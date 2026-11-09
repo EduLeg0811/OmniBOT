@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
@@ -528,30 +528,44 @@ export function ThreadPage() {
               currentContainerWidth.className,
             )}
           >
-            <TooltipProvider delayDuration={250}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleOpenSettings}
-                    className="group inline-flex items-center gap-2 rounded-full border border-[#E4DBC8] bg-[#F7F2E7] px-3.5 py-1.5 text-xs font-medium text-stone-700 shadow-xs backdrop-blur transition-all duration-200 hover:border-primary/60 hover:bg-[#EFE8D6] hover:text-stone-900 hover:shadow-sm active:scale-[0.98] dark:border-[#423C32] dark:bg-[#28241D] dark:text-stone-300 dark:hover:border-primary/50 dark:hover:bg-[#332E25] dark:hover:text-stone-100"
-                    aria-label="Ajustar estilo das respostas no menu de configurações"
-                  >
-                    <SlidersHorizontal className="size-3.5 text-primary transition-transform duration-200 group-hover:rotate-45" />
-                    <span>Estilo das respostas</span>
-                    <span className="h-3 w-px bg-[#D9CEB7] dark:bg-[#4A4337]" />
-                    <span className="font-semibold text-foreground">
-                      {PROFILES.find(
-                        (p) => p.id === (active.settings.profile ?? DEFAULT_SETTINGS.profile),
-                      )?.label ?? "Tutor"}
-                    </span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-64 bg-popover text-center text-[11px] leading-snug text-popover-foreground">
-                  Clique para abrir as configurações e personalizar o perfil, formato e parâmetros.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {(() => {
+              const isEnglish = isEnglishVectorStore(effectiveSettings.vectorStoreId);
+              const profileLabel =
+                PROFILES.find(
+                  (p) => p.id === (effectiveSettings.profile ?? DEFAULT_SETTINGS.profile),
+                )?.label ?? "Tutor";
+              const formatLabel =
+                effectiveSettings.responseFormat === "conscienciological"
+                  ? isEnglish
+                    ? "Conscientiological Confor"
+                    : "Confor Conscienciológico"
+                  : isEnglish
+                    ? "ChatGPT style"
+                    : "Estilo ChatGPT";
+
+              return (
+                <TooltipProvider delayDuration={250}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleOpenSettings}
+                        className="group inline-flex items-center gap-2 rounded-full border border-[#E4DBC8] bg-[#F7F2E7] px-3.5 py-1.5 text-xs font-medium text-stone-700 shadow-xs backdrop-blur transition-all duration-200 hover:border-primary/60 hover:bg-[#EFE8D6] hover:text-stone-900 hover:shadow-sm active:scale-[0.98] dark:border-[#423C32] dark:bg-[#28241D] dark:text-stone-300 dark:hover:border-primary/50 dark:hover:bg-[#332E25] dark:hover:text-stone-100"
+                        aria-label="Ajustar estilo das respostas no menu de configurações"
+                      >
+                        <SlidersHorizontal className="size-3.5 text-primary transition-transform duration-200 group-hover:rotate-45" />
+                        <span className="font-semibold text-foreground">{profileLabel}</span>
+                        <span className="h-3 w-px bg-[#D9CEB7] dark:bg-[#4A4337]" />
+                        <span>{formatLabel}</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-64 bg-popover text-center text-[11px] leading-snug text-popover-foreground">
+                      Clique para abrir as configurações e personalizar o perfil, formato e parâmetros.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
           </div>
         </div>
 
