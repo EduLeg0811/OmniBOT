@@ -6,6 +6,7 @@ import {
   DEFAULT_SETTINGS,
   MODELS,
   SYSTEM_CAVEATS,
+  allowedVectorStoreId,
   buildCaveatsInstruction,
   buildSystemPrompt,
   modelsFor,
@@ -14,6 +15,7 @@ import {
   settingsForProfile,
   settingsForPublicUser,
   targetWordsForSettings,
+  vectorStoresFor,
   withProfile,
   type SystemCaveat,
 } from "@/lib/chat-settings";
@@ -21,13 +23,13 @@ import {
 describe("chat settings", () => {
   it("contém exclusivamente modelos da família GPT-6 / GPT-6.1", () => {
     const allModelIds = MODELS.map((model) => model.id);
-    expect(allModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol"]);
+    expect(allModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"]);
 
     const adminModelIds = modelsFor(true).map((model) => model.id);
     const publicModelIds = modelsFor(false).map((model) => model.id);
 
-    expect(adminModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol"]);
-    expect(publicModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol"]);
+    expect(adminModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"]);
+    expect(publicModelIds).toEqual(["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"]);
 
     expect(MODELS.find((model) => model.id === "gpt-6.1-sol")).toMatchObject({
       label: "ConsBOT Sol (GPT-6.1)",
@@ -39,11 +41,30 @@ describe("chat settings", () => {
       adminOnly: false,
       supportsNoneReasoning: true,
     });
+    expect(MODELS.find((model) => model.id === "gpt-6.1-terra")).toMatchObject({
+      label: "ConsBOT Terra (GPT-6.1)",
+      adminOnly: false,
+      supportsNoneReasoning: true,
+    });
   });
 
   it("trata o raciocínio none conforme a compatibilidade de cada modelo", () => {
     expect(normalizeReasoningEffortForModel("gpt-6.1-sol", "none")).toBe("none");
     expect(normalizeReasoningEffortForModel("gpt-6-luna", "none")).toBe("none");
+    expect(normalizeReasoningEffortForModel("gpt-6.1-terra", "none")).toBe("none");
+  });
+
+  it("permite ao usuário comum selecionar apenas CONSTECA e ENGLISH no menu de fontes", () => {
+    const publicStores = vectorStoresFor(false).map((store) => store.label);
+    expect(publicStores).toEqual(["CONSTECA", "ENGLISH"]);
+
+    const constecaId = "vs_6a7f75cd0be48191b3f3960a518c6ff3";
+    const englishId = "vs_69260faaec088191bbcf5e3f29b09b71";
+    const allwvId = "vs_6912908250e4819197e23fe725e04fae";
+
+    expect(allowedVectorStoreId(constecaId, false)).toBe(constecaId);
+    expect(allowedVectorStoreId(englishId, false)).toBe(englishId);
+    expect(allowedVectorStoreId(allwvId, false)).toBe(constecaId);
   });
 
   it("restaura o modelo do perfil quando uma configuração customizada chega ao modo público", () => {
@@ -60,6 +81,7 @@ describe("chat settings", () => {
       vectorMaxResults: 5,
       responseFormat: "chatgpt",
       responseDepth: "synthetic",
+      initialSuggestions: false,
     });
     expect(DEFAULT_SETTINGS.agent).toEqual({
       enabled: true,
@@ -75,6 +97,8 @@ describe("chat settings", () => {
     expect(settings.retrievalMode).toBe("standard");
     expect(settings.semanticSourceIds).toEqual(["lo", "dac"]);
     expect(settings.semanticContextLimit).toBe(10);
+    expect(settings.model).toBe("gpt-6.1-terra");
+    expect(settings.reasoningEffort).toBe("medium");
   });
 
   it("limita a recuperação documental ao intervalo de 1 a 200 citações", () => {
@@ -149,17 +173,17 @@ describe("chat settings", () => {
       responseFormat: "chatgpt" as const,
       responseDepth: "synthetic" as const,
     };
-    expect(targetWordsForSettings(chatGptSettings)).toBe(300);
+    expect(targetWordsForSettings(chatGptSettings)).toBe(400);
 
     const consSettings = {
       ...DEFAULT_SETTINGS,
       responseFormat: "conscienciological" as const,
       responseDepth: "synthetic" as const,
     };
-    expect(targetWordsForSettings(consSettings)).toBe(500);
+    expect(targetWordsForSettings(consSettings)).toBe(600);
 
     const prompt = buildSystemPrompt(consSettings);
-    expect(prompt).toContain("cerca de 500 palavras");
+    expect(prompt).toContain("cerca de 600 palavras");
   });
 
   it("injeta as diretrizes e ressalvas cosmoéticas no system prompt", () => {

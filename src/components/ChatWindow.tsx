@@ -284,9 +284,9 @@ function getRagStatus(
   const metadata = userMessage.metadata;
   const vectorStoreId =
     metadata &&
-    typeof metadata === "object" &&
-    "ragVectorStoreId" in metadata &&
-    typeof metadata.ragVectorStoreId === "string"
+      typeof metadata === "object" &&
+      "ragVectorStoreId" in metadata &&
+      typeof metadata.ragVectorStoreId === "string"
       ? (metadata.ragVectorStoreId as ChatSettings["vectorStoreId"])
       : fallbackVectorStoreId;
   const vectorStoreLabel = VECTOR_STORES.find((store) => store.id === vectorStoreId)?.label;
@@ -295,13 +295,12 @@ function getRagStatus(
   const isEnglish = isEnglishVectorStore(vectorStoreId);
 
   return fileSearchPart.state === "output-available"
-    ? `${storeDetail}${
-        totalFiles === undefined
-          ? ""
-          : isEnglish
-            ? ` · ${totalFiles} source${totalFiles === 1 ? "" : "s"}`
-            : ` · ${totalFiles} fonte${totalFiles === 1 ? "" : "s"}`
-      }`
+    ? `${storeDetail}${totalFiles === undefined
+      ? ""
+      : isEnglish
+        ? ` · ${totalFiles} source${totalFiles === 1 ? "" : "s"}`
+        : ` · ${totalFiles} fonte${totalFiles === 1 ? "" : "s"}`
+    }`
     : isEnglish
       ? `Querying ${storeDetail}…`
       : `Consultando ${storeDetail}…`;
@@ -582,23 +581,17 @@ export function ChatWindow({
     }),
     [isEnglish, onAuditInteraction, settings.vectorStoreId, threadId],
   );
-  const modelGeneration = activeModel?.id.includes("6.1") ? "GPT-6.1" : "GPT-6";
-  const modelName = activeModel
-    ? activeModel.label.replace("ConsBOT ", "").replace(/\s*\(GPT-6(?:\.[0-9]+)?\)/, "")
-    : "Sol";
-  const llmParameters = [
-    `${modelGeneration} ${modelName}`,
-    activeProfile?.label ?? "Tutor",
-    !isMobile ? REASONING_LABELS[settings.reasoningEffort] : undefined,
-    activeDepth?.label ?? "Equilibrada",
-    settings.vectorStoreId === "none"
+  const profileLabel = activeProfile?.label ?? "Introdutor";
+  const formatLabel =
+    settings.responseFormat === "conscienciological"
       ? isEnglish
-        ? "No RAG"
-        : "Sem RAG"
-      : activeVectorStore?.label,
-    ((settings.retrievalMode as string) ?? "standard") === "corpus" ? "Recupera Corpus" : undefined,
-    settings.responseFormat === "conscienciological" ? "Confor Cons" : "ChatGPT",
-  ].filter((parameter): parameter is string => Boolean(parameter));
+        ? "Conscientiological Confor"
+        : "Confor Conscienciológico"
+      : isEnglish
+        ? "ChatGPT style"
+        : "estilo ChatGPT";
+
+  const llmParameters = [profileLabel, formatLabel];
 
   useEffect(() => {
     if (settings.vectorStoreId === "none" || sourceCounts[settings.vectorStoreId] !== undefined) {
@@ -659,9 +652,9 @@ export function ChatWindow({
               // a requisição realmente usa.
               ...(vectorStores.length > 0
                 ? {
-                    toolChoice: { type: "file_search" },
-                    vectorMaxResults: settingsRef.current.vectorMaxResults,
-                  }
+                  toolChoice: { type: "file_search" },
+                  vectorMaxResults: settingsRef.current.vectorMaxResults,
+                }
                 : {}),
               stream: true,
             },
@@ -832,13 +825,13 @@ export function ChatWindow({
             existing.map((message) =>
               message.id === assistantMessageId
                 ? {
-                    ...message,
-                    metadata: {
-                      ...message.metadata,
-                      agentFollowUp: selection satisfies AgentFollowUpMetadata,
-                      agentFollowUpQuestion: selection.question,
-                    },
-                  }
+                  ...message,
+                  metadata: {
+                    ...message.metadata,
+                    agentFollowUp: selection satisfies AgentFollowUpMetadata,
+                    agentFollowUpQuestion: selection.question,
+                  },
+                }
                 : message,
             ),
           );
@@ -1053,11 +1046,11 @@ export function ChatWindow({
           openaiRequest: openaiAuditRef.current?.request,
           response: openaiAuditRef.current
             ? {
-                responseId: openaiAuditRef.current.responseId,
-                model: openaiAuditRef.current.model,
-                finishReason: openaiAuditRef.current.finishReason,
-                usage: openaiAuditRef.current.usage,
-              }
+              responseId: openaiAuditRef.current.responseId,
+              model: openaiAuditRef.current.model,
+              finishReason: openaiAuditRef.current.finishReason,
+              usage: openaiAuditRef.current.usage,
+            }
             : { aviso: "O stream terminou sem metadados de auditoria da OpenAI." },
           uiResponse: assistantWithPills,
           ...(agentPills.length ? { agentPills } : {}),
@@ -1212,22 +1205,22 @@ export function ChatWindow({
         const agentPlan =
           triage && triage.origin !== "bypass"
             ? {
-                route: triage!.mode,
-                responseMode: triage.responseMode,
-                responseConfidence: triage.responseConfidence,
-                answerOrigin: triage.answerOrigin,
-                actions: plannedActions,
-                turnId: echoId,
-                presentation: current.agent.presentation ?? "classic",
-                confidence: triage.confidence,
-                reason: triage.reason,
-                origin: triage.origin,
-                ...(triage.proposedRoute ? { proposedRoute: triage.proposedRoute } : {}),
-                ...(triage.proposedResponseMode
-                  ? { proposedResponseMode: triage.proposedResponseMode }
-                  : {}),
-                ...(triage.durationMs === undefined ? {} : { durationMs: triage.durationMs }),
-              }
+              route: triage!.mode,
+              responseMode: triage.responseMode,
+              responseConfidence: triage.responseConfidence,
+              answerOrigin: triage.answerOrigin,
+              actions: plannedActions,
+              turnId: echoId,
+              presentation: current.agent.presentation ?? "classic",
+              confidence: triage.confidence,
+              reason: triage.reason,
+              origin: triage.origin,
+              ...(triage.proposedRoute ? { proposedRoute: triage.proposedRoute } : {}),
+              ...(triage.proposedResponseMode
+                ? { proposedResponseMode: triage.proposedResponseMode }
+                : {}),
+              ...(triage.durationMs === undefined ? {} : { durationMs: triage.durationMs }),
+            }
             : undefined;
         const agentPills = pillsForAudit(agentPlan?.actions ?? []);
         // Os pills do Direcionador entram no plano do turno quando chegam. Os
@@ -1313,13 +1306,13 @@ export function ChatWindow({
             existing.map((message) =>
               message.id === echoId
                 ? {
-                    ...message,
-                    metadata: {
-                      ...message.metadata,
-                      ...(classifierTrace ? { agentClassifier: classifierTrace } : {}),
-                      ...(agentPlan ? { agentPlan } : {}),
-                    },
-                  }
+                  ...message,
+                  metadata: {
+                    ...message.metadata,
+                    ...(classifierTrace ? { agentClassifier: classifierTrace } : {}),
+                    ...(agentPlan ? { agentPlan } : {}),
+                  },
+                }
                 : message,
             ),
           );
@@ -1371,8 +1364,8 @@ export function ChatWindow({
           const sourceListAction =
             triage?.mode === "direct"
               ? triage.actions.find(
-                  (action) => action.kind === "inline-result" && action.id === "list_sources",
-                )
+                (action) => action.kind === "inline-result" && action.id === "list_sources",
+              )
               : undefined;
           if (sourceListAction) {
             setPreparationStage("sources");
@@ -1427,9 +1420,9 @@ export function ChatWindow({
             ...existing.map((message) =>
               message.id === echoId && semanticContext
                 ? {
-                    ...message,
-                    metadata: { ...message.metadata, semanticContext },
-                  }
+                  ...message,
+                  metadata: { ...message.metadata, semanticContext },
+                }
                 : message,
             ),
             directMessage,
@@ -1533,15 +1526,15 @@ export function ChatWindow({
         });
         pendingFollowUpRef.current = followUpEligibility.eligible
           ? {
-              userText: value,
-              previousUserText,
-              actions: plannedActions,
-              responseMode: "full",
-              recentTurns,
-              ...(followUpOrigin ? { currentFollowUp: followUpOrigin } : {}),
-              displayedFollowUpCount: followUpCount,
-              isEnglish,
-            }
+            userText: value,
+            previousUserText,
+            actions: plannedActions,
+            responseMode: "full",
+            recentTurns,
+            ...(followUpOrigin ? { currentFollowUp: followUpOrigin } : {}),
+            displayedFollowUpCount: followUpCount,
+            isEnglish,
+          }
           : null;
 
         void sendMessage({
@@ -1579,24 +1572,24 @@ export function ChatWindow({
               return existing.map((message) =>
                 message.id === target.id
                   ? {
-                      ...message,
-                      metadata: {
-                        ...message.metadata,
-                        agentPlan: {
-                          route: late.mode,
-                          responseMode: late.responseMode,
-                          responseConfidence: late.responseConfidence,
-                          answerOrigin: late.answerOrigin,
-                          actions,
-                          turnId: target.id,
-                          presentation: current.agent.presentation ?? "classic",
-                          confidence: late.confidence,
-                          reason: `${late.reason} [especulativo]`,
-                          origin: late.origin,
-                          ...(late.durationMs === undefined ? {} : { durationMs: late.durationMs }),
-                        },
+                    ...message,
+                    metadata: {
+                      ...message.metadata,
+                      agentPlan: {
+                        route: late.mode,
+                        responseMode: late.responseMode,
+                        responseConfidence: late.responseConfidence,
+                        answerOrigin: late.answerOrigin,
+                        actions,
+                        turnId: target.id,
+                        presentation: current.agent.presentation ?? "classic",
+                        confidence: late.confidence,
+                        reason: `${late.reason} [especulativo]`,
+                        origin: late.origin,
+                        ...(late.durationMs === undefined ? {} : { durationMs: late.durationMs }),
                       },
-                    }
+                    },
+                  }
                   : message,
               );
             });
@@ -1666,7 +1659,13 @@ export function ChatWindow({
   const previousThemesRef = useRef<string[]>([]);
   const refreshSuggestions = useCallback(
     async (forcedVectorStoreId?: ChatSettings["vectorStoreId"]) => {
-      if (isRefreshingSuggestions || isBusy) return;
+      if (
+        (!settingsRef.current.initialSuggestions && !forcedVectorStoreId) ||
+        isRefreshingSuggestions ||
+        isBusy
+      ) {
+        return;
+      }
       const expectedCount = 4;
       setIsRefreshingSuggestions(true);
 
@@ -1677,38 +1676,38 @@ export function ChatWindow({
         previousThemesRef.current.length > 0
           ? isEnglish
             ? `\nConscientiology themes/concepts already covered previously in this session (DO NOT repeat or approach these themes):\n${previousThemesRef.current
-                .map((theme) => `- ${theme}`)
-                .join(
-                  "\n",
-                )}\n\nChoose completely new and distinct themes within the wide universe of Conscientiology.\n`
+              .map((theme) => `- ${theme}`)
+              .join(
+                "\n",
+              )}\n\nChoose completely new and distinct themes within the wide universe of Conscientiology.\n`
             : `\nTemáticas/conceitos da Conscienciologia já abordados anteriormente nesta sessão (NÃO repita nem se aproxime dessas temáticas):\n${previousThemesRef.current
-                .map((theme) => `- ${theme}`)
-                .join(
-                  "\n",
-                )}\n\nEscolha temáticas completamente inéditas e distintas dentro do amplo universo da Conscienciologia.\n`
+              .map((theme) => `- ${theme}`)
+              .join(
+                "\n",
+              )}\n\nEscolha temáticas completamente inéditas e distintas dentro do amplo universo da Conscienciologia.\n`
           : "";
 
       const prompt = isEnglish
         ? `Generate exactly ${expectedCount} suggested questions about the Conscientiology corpus following strictly these guidelines:\n\n` +
-          `- For each item return the topic ('topic') and the question ('question').\n` +
-          `- Each question must address a completely different topic or concept from the other questions in this batch.\n` +
-          `- Freely choose new topics and technical terms of Conscientiology, widely varying the topics in each generation.\n` +
-          `- Do not repeat topics covered in previous rounds.\n` +
-          `- Generate questions with at most 10 words each.\n` +
-          `- Write in British English, in a clear, natural manner, ending with a question mark.\n` +
-          `- Do not ask overly narrow questions or questions that can be answered with yes or no.\n` +
-          `- Prefer using Conscientiological terms and vocabulary.\n` +
-          previousThemesContext
+        `- For each item return the topic ('topic') and the question ('question').\n` +
+        `- Each question must address a completely different topic or concept from the other questions in this batch.\n` +
+        `- Freely choose new topics and technical terms of Conscientiology, widely varying the topics in each generation.\n` +
+        `- Do not repeat topics covered in previous rounds.\n` +
+        `- Generate questions with at most 10 words each.\n` +
+        `- Write in British English, in a clear, natural manner, ending with a question mark.\n` +
+        `- Do not ask overly narrow questions or questions that can be answered with yes or no.\n` +
+        `- Prefer using Conscientiological terms and vocabulary.\n` +
+        previousThemesContext
         : `Gere exatamente ${expectedCount} perguntas de sugestão sobre o corpus da Conscienciologia seguindo estritamente estas diretrizes:\n\n` +
-          `- Para cada item retorne a temática ('topic') e a pergunta ('question').\n` +
-          `- Cada pergunta deve abordar uma temática ou conceito totalmente diferente das outras perguntas deste lote.\n` +
-          `- Escolha livremente novas temáticas e termos técnicos da Conscienciologia, variando amplamente os tópicos a cada geração.\n` +
-          `- Não repita temáticas abordadas em rodadas anteriores.\n` +
-          `- Gere perguntas com no máximo 10 palavras cada uma.\n` +
-          `- Escreva em português do Brasil, de forma clara, natural e terminando com ponto de interrogação.\n` +
-          `- Não faça perguntas muito fechadas ou que possam ser respondidas com sim ou não.\n` +
-          `- Prefira usar termos e jargões conscienciológicos.\n` +
-          previousThemesContext;
+        `- Para cada item retorne a temática ('topic') e a pergunta ('question').\n` +
+        `- Cada pergunta deve abordar uma temática ou conceito totalmente diferente das outras perguntas deste lote.\n` +
+        `- Escolha livremente novas temáticas e termos técnicos da Conscienciologia, variando amplamente os tópicos a cada geração.\n` +
+        `- Não repita temáticas abordadas em rodadas anteriores.\n` +
+        `- Gere perguntas com no máximo 10 palavras cada uma.\n` +
+        `- Escreva em português do Brasil, de forma clara, natural e terminando com ponto de interrogação.\n` +
+        `- Não faça perguntas muito fechadas ou que possam ser respondidas com sim ou não.\n` +
+        `- Prefira usar termos e jargões conscienciológicos.\n` +
+        previousThemesContext;
 
       const schemaDescription = isEnglish
         ? `An object with exactly ${expectedCount} suggestions containing topic ('topic') and question ('question') on Conscientiology, with varied themes and short questions (max 10 words) in British English.`
@@ -1746,9 +1745,9 @@ export function ChatWindow({
         if (!response.ok) {
           throw new Error(
             result.detail ||
-              (isEnglish
-                ? "Unable to generate new questions."
-                : "Não foi possível gerar novas perguntas."),
+            (isEnglish
+              ? "Unable to generate new questions."
+              : "Não foi possível gerar novas perguntas."),
           );
         }
         const parsed = result.content ? (JSON.parse(result.content) as SuggestionsPayload) : {};
@@ -1823,6 +1822,7 @@ export function ChatWindow({
   const initialSuggestionsRequestedRef = useRef(false);
   useEffect(() => {
     if (
+      !settings.initialSuggestions ||
       initialSuggestionsRequestedRef.current ||
       hasInitialUrlQuestion.current ||
       isBusy ||
@@ -1834,7 +1834,7 @@ export function ChatWindow({
 
     initialSuggestionsRequestedRef.current = true;
     void refreshSuggestions();
-  }, [initialMessages.length, isBusy, messages.length, refreshSuggestions]);
+  }, [initialMessages.length, isBusy, messages.length, refreshSuggestions, settings.initialSuggestions]);
 
   const prevVectorStoreIdRef = useRef(settings.vectorStoreId);
   useEffect(() => {
@@ -1849,10 +1849,10 @@ export function ChatWindow({
       previousThemesRef.current = [];
     }
 
-    if (messages.length === 0 && !hasInitialUrlQuestion.current && !isBusy) {
+    if (settings.initialSuggestions && messages.length === 0 && !hasInitialUrlQuestion.current && !isBusy) {
       void refreshSuggestions(settings.vectorStoreId);
     }
-  }, [isBusy, messages.length, refreshSuggestions, settings.vectorStoreId]);
+  }, [isBusy, messages.length, refreshSuggestions, settings.initialSuggestions, settings.vectorStoreId]);
 
   const stopWithAudit = () => {
     preparationCancelledRef.current = true;
@@ -1939,12 +1939,12 @@ export function ChatWindow({
       existing.map((message) =>
         message.id === latestAssistantMessage.id
           ? {
-              ...message,
-              metadata: {
-                ...message.metadata,
-                liked: nextLiked,
-              },
-            }
+            ...message,
+            metadata: {
+              ...message.metadata,
+              liked: nextLiked,
+            },
+          }
           : message,
       ),
     );
@@ -1984,10 +1984,10 @@ export function ChatWindow({
       message_id: latestAssistantMessage.id,
       ...(agentPills.length > 0
         ? {
-            pills: agentPills.map((p) => p.label).join(", "),
-            pills_count: agentPills.length,
-            agent_pills: agentPills,
-          }
+          pills: agentPills.map((p) => p.label).join(", "),
+          pills_count: agentPills.length,
+          agent_pills: agentPills,
+        }
         : {}),
     };
 
@@ -2039,9 +2039,30 @@ export function ChatWindow({
                       </>
                     )}
                   </h2>
+                  {/* <p className="max-w-lg text-center text-xs leading-relaxed text-muted-foreground/80 sm:text-sm">
+                    {isEnglish ? (
+                      <>
+                        Responses generated by probabilistic AI may contain inaccuracies.
+                        <br className="hidden sm:inline" /> Apply the{" "}
+                        <span className="font-medium text-foreground/90">
+                          Disbelief Principle
+                        </span>{" "}
+                        and consult original sources.
+                      </>
+                    ) : (
+                      <>
+                        Respostas geradas por IA probabilística podem conter imprecisões.
+                        <br className="hidden sm:inline" /> Aplique o{" "}
+                        <span className="font-medium text-foreground/90">
+                          Princípio da Descrença
+                        </span>{" "}
+                        e consulte as fontes originais.
+                      </>
+                    )}
+                  </p> */}
                 </div>
 
-                {!hasInitialUrlQuestion.current ? (
+                {!hasInitialUrlQuestion.current && settings.initialSuggestions ? (
                   <>
                     <div className="-mb-3 flex w-full justify-end">
                       <Button
@@ -2104,22 +2125,22 @@ export function ChatWindow({
               const visibleFollowUpQuestion =
                 message.role === "assistant" && precedingUser?.role === "user"
                   ? visibleLegacyAgentFollowUp({
-                      question: storedFollowUp,
-                      responseMode: turnResponseMode,
-                      userQuestion: getMessageText(precedingUser),
-                      actions: turnPlan?.actions ?? [],
-                    })
+                    question: storedFollowUp,
+                    responseMode: turnResponseMode,
+                    userQuestion: getMessageText(precedingUser),
+                    actions: turnPlan?.actions ?? [],
+                  })
                   : null;
               const waitingForThisAssistant = isBusy && messageIndex === messages.length - 1;
               const hasVisibleContent = messageHasVisibleContent(message);
               const ragStatus =
                 message.role === "user"
                   ? getRagStatus(
-                      message,
-                      messages[messageIndex + 1],
-                      settings.vectorStoreId,
-                      sourceCounts,
-                    )
+                    message,
+                    messages[messageIndex + 1],
+                    settings.vectorStoreId,
+                    sourceCounts,
+                  )
                   : null;
               const manualCorpusTurn =
                 message.role === "user" &&
@@ -2127,7 +2148,7 @@ export function ChatWindow({
                 message.metadata !== null &&
                 "turnConfig" in message.metadata &&
                 (message.metadata.turnConfig as TurnConfigSnapshot | undefined)?.retrieval ===
-                  "corpus";
+                "corpus";
               return (
                 <div key={message.id} className="w-full">
                   <Message from={message.role}>
@@ -2157,7 +2178,7 @@ export function ChatWindow({
                               : part.text;
                           const text =
                             message.role === "assistant" &&
-                            settings.responseFormat === "conscienciological"
+                              settings.responseFormat === "conscienciological"
                               ? normalizeConscienciologicalLists(stripped)
                               : stripped;
 
@@ -2207,9 +2228,9 @@ export function ChatWindow({
                     </>
                   ) : null}
                   {message.role === "assistant" &&
-                  precedingUser?.role === "user" &&
-                  !waitingForThisAssistant &&
-                  (classicAgentTurn || visibleFollowUpQuestion) ? (
+                    precedingUser?.role === "user" &&
+                    !waitingForThisAssistant &&
+                    (classicAgentTurn || visibleFollowUpQuestion) ? (
                     <div className="mt-2">
                       <AgentActions
                         threadId={threadId}
@@ -2225,11 +2246,11 @@ export function ChatWindow({
                           const previousOrigin = precedingUser.metadata?.agentFollowUpOrigin;
                           const followUpOrigin = selectedFollowUp
                             ? {
-                                ...selectedFollowUp,
-                                chainId: previousOrigin?.chainId ?? precedingUser.id,
-                                depth: (previousOrigin?.depth ?? 0) + 1,
-                                parentAssistantMessageId: message.id,
-                              }
+                              ...selectedFollowUp,
+                              chainId: previousOrigin?.chainId ?? precedingUser.id,
+                              depth: (previousOrigin?.depth ?? 0) + 1,
+                              parentAssistantMessageId: message.id,
+                            }
                             : undefined;
                           logFeatureAccess({
                             module: "consbot",
@@ -2283,11 +2304,10 @@ export function ChatWindow({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className={`rounded-lg transition-colors ${
-                    isLatestLiked
+                  className={`rounded-lg transition-colors ${isLatestLiked
                       ? "text-primary hover:text-primary/80"
                       : "text-muted-foreground hover:text-foreground"
-                  }`}
+                    }`}
                   aria-label={
                     isLatestLiked
                       ? isEnglish
@@ -2394,6 +2414,11 @@ export function ChatWindow({
               {llmParameters.join("  ●  ")}
             </p>
           </div>
+          <p className="mt-1.5 text-center text-[10.5px] leading-relaxed text-muted-foreground/50">
+            {isEnglish
+              ? "ConsBOT can make mistakes. Apply the Disbelief Principle and verify with original sources."
+              : "O ConsBOT pode cometer erros. Aplique o Princípio da Descrença e consulte as fontes originais."}
+          </p>
         </div>
       </div>
     </main>

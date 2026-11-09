@@ -5,6 +5,7 @@ export { SYSTEM_CAVEATS, buildCaveatsInstruction, type SystemCaveat };
 
 export const SOL_V6_MODEL_ID = "gpt-6.1-sol" as const;
 export const LUNA_V6_MODEL_ID = "gpt-6-luna" as const;
+export const TERRA_V6_MODEL_ID = "gpt-6.1-terra" as const;
 
 export const MODELS = [
   {
@@ -18,6 +19,13 @@ export const MODELS = [
     id: SOL_V6_MODEL_ID,
     label: "ConsBOT Sol (GPT-6.1)",
     description: "Versão GPT-6.1 balanceada com raciocínio avançado para fluxos complexos.",
+    adminOnly: false,
+    supportsNoneReasoning: true,
+  },
+  {
+    id: TERRA_V6_MODEL_ID,
+    label: "ConsBOT Terra (GPT-6.1)",
+    description: "Versão GPT-6.1 com raciocínio focado em tutoria, didática e explicação.",
     adminOnly: false,
     supportsNoneReasoning: true,
   },
@@ -62,13 +70,13 @@ export const RESPONSE_FORMATS: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
-  {
-    id: "conscienciological",
-    label: "Confor CONS",
-    description: "Estilo da Conscienciologia",
-  },
-];
+    { id: "chatgpt", label: "ChatGPT", description: "Texto natural e estrutura livre" },
+    {
+      id: "conscienciological",
+      label: "Confor CONS",
+      description: "Estilo da Conscienciologia",
+    },
+  ];
 
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -115,12 +123,12 @@ export const RESPONSE_DEPTHS: ResponseDepthDefinition[] = [
 ];
 
 export const DEFAULT_DEPTH_WORD_TARGETS: Record<ResponseDepthId, number> = {
-  synthetic: 300,
-  balanced: 600,
-  complete: 1200,
+  synthetic: 400,
+  balanced: 1200,
+  complete: 2400,
 };
 
-export const DEPTH_WORD_STEP = 100;
+export const DEPTH_WORD_STEP = 200;
 export const MIN_TARGET_WORDS = 200;
 export const MAX_TARGET_WORDS = 4000;
 
@@ -146,26 +154,23 @@ export function targetWordsForSettings(settings: ChatSettings): number {
     : base;
 }
 
-export type ProfileId = "preceptor" | "tutor" | "escritor" | "introdutor";
+export type ProfileId = "preceptor" | "tutor" | "introdutor";
 
 export const PROFILES: Array<{
   id: ProfileId;
   label: string;
   description: string;
 }> = [
-  { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
-  { id: "tutor", label: "Tutor", description: "Didático e cordial" },
-  { id: "escritor", label: "Escritor", description: "Longo e expressivo" },
-  { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
-];
+    { id: "introdutor", label: "Introdutor", description: "Simples e acessível" },
+    { id: "tutor", label: "Tutor", description: "Didático e cordial" },
+    { id: "preceptor", label: "Preceptor", description: "Direto e experiente" },
+  ];
 
 export const PROFILE_INSTRUCTIONS: Record<ProfileId, string> = {
   preceptor: `## Perfil: Preceptor
 Atue com a voz de um preceptor experiente: apresente cedo a tese central, formule orientações, critérios, correções e próximos passos com firmeza respeitosa e assuma posição clara quando houver base suficiente. Diferencie com objetividade fatos, interpretações e incertezas. Evite tom evasivo, ornamentação e elogios genéricos.`,
   tutor: `## Perfil: Tutor
 Atue com a voz de um tutor didático, paciente e cordial. Parta do nível provável do usuário, encadeie as ideias em sequência lógica e torne explícitas as relações e etapas que poderiam ficar implícitas. Use exemplos, analogias ou contrastes quando facilitarem a compreensão e antecipe dúvidas comuns sem adotar tom condescendente.`,
-  escritor: `## Perfil: Escritor
-Atue com a voz de um escritor analítico e cuidadoso. Empregue vocabulário preciso e expressivo, transições naturais, variedade sintática e continuidade entre as ideias. Produza prosa coesa e bem articulada, sem floreio vazio, repetição artificial ou tom afetado.`,
   introdutor: `## Perfil: Introdutor
 Atue com a voz de um introdutor para quem ainda não domina o tema. Use linguagem cotidiana, frases claras e progressão pedagógica, sem pressupor conhecimentos prévios. Preserve os termos técnicos necessários, especialmente os conscienciológicos, mas explique cada um imediatamente em linguagem comum. Evite jargão não explicado, abstrações desnecessárias e tom excessivamente acadêmico.`,
 };
@@ -304,26 +309,18 @@ export const PROFILE_LLM_DEFAULTS: Record<ProfileId, ProfileLlmDefaults> = {
     vectorMaxResults: 5,
   },
   tutor: {
-    model: SOL_V6_MODEL_ID,
-    reasoningEffort: "low",
-    responseFormat: "chatgpt",
-    responseDepth: "synthetic",
-    vectorStoreId: "vs_6a7f75cd0be48191b3f3960a518c6ff3",
-    vectorMaxResults: 10,
-  },
-  escritor: {
-    model: SOL_V6_MODEL_ID,
+    model: TERRA_V6_MODEL_ID,
     reasoningEffort: "medium",
     responseFormat: "chatgpt",
-    responseDepth: "complete",
+    responseDepth: "balanced",
     vectorStoreId: "vs_6a7f75cd0be48191b3f3960a518c6ff3",
-    vectorMaxResults: 15,
+    vectorMaxResults: 10,
   },
   preceptor: {
     model: SOL_V6_MODEL_ID,
     reasoningEffort: "high",
     responseFormat: "conscienciological",
-    responseDepth: "balanced",
+    responseDepth: "complete",
     vectorStoreId: "vs_6a7f75cd0be48191b3f3960a518c6ff3",
     vectorMaxResults: 20,
   },
@@ -338,6 +335,8 @@ export interface ChatSettings extends ProfileLlmDefaults {
   /** Máximo de trechos do corpus recuperados e exibidos no painel de citações. */
   semanticContextLimit: number;
   agent: AgentSettings;
+  /** Sugestões de perguntas iniciais na entrada do ConsBOT (configurável apenas por Admin). Default = false. */
+  initialSuggestions?: boolean;
 }
 
 /** Limites do complemento documental exibido no painel de citações. */
@@ -371,6 +370,7 @@ export function settingsForProfile(profile: ProfileId): ChatSettings {
     semanticSourceIds: [...DEFAULT_SEMANTIC_SOURCE_IDS],
     semanticContextLimit: SEMANTIC_CONTEXT_RESULTS_DEFAULT,
     agent: normalizeAgentSettings(AGENT_SETTINGS_DEFAULT),
+    initialSuggestions: false,
   };
 }
 
@@ -395,6 +395,7 @@ export function withProfile<T extends ChatSettings>(settings: T, profile: Profil
     semanticSourceIds: [...(settings.semanticSourceIds ?? DEFAULT_SEMANTIC_SOURCE_IDS)],
     semanticContextLimit: normalizeSemanticContextLimit(settings.semanticContextLimit),
     agent: normalizeAgentSettings(settings.agent),
+    initialSuggestions: settings.initialSuggestions ?? false,
   };
 }
 
@@ -412,7 +413,7 @@ export function withResponseDepth<T extends ChatSettings>(
   return { ...settings, responseDepth };
 }
 
-const PUBLIC_VECTOR_STORE_LABELS: readonly string[] = ["CONSTECA", "ENGLISH", "LO"];
+const PUBLIC_VECTOR_STORE_LABELS: readonly string[] = ["CONSTECA", "ENGLISH"];
 
 export const PUBLIC_VECTOR_STORES = VECTOR_STORES.filter((store) =>
   PUBLIC_VECTOR_STORE_LABELS.includes(store.label),
@@ -451,6 +452,7 @@ export function settingsForPublicUser(settings: ChatSettings): ChatSettings {
       followUpSuggestions: true,
       pillDestination: "cons-ia",
     },
+    initialSuggestions: false,
   };
 }
 

@@ -74,7 +74,7 @@ const customised = {
   depthWordTargets: { synthetic: 300, balanced: 800, complete: 1800 },
   additionalInstructions: "Teste administrativo",
 };
-const changedProfile = settingsModule.withProfile(customised, "escritor");
+const changedProfile = settingsModule.withProfile(customised, "preceptor");
 if (
   changedProfile.depthWordTargets.complete !== 1800 ||
   changedProfile.additionalInstructions !== "Teste administrativo"

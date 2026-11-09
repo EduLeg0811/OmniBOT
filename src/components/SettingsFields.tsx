@@ -9,6 +9,7 @@ import {
   LoaderCircle,
   RefreshCw,
   SlidersHorizontal,
+  Sparkles,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -326,9 +328,8 @@ function SemanticSourceSettings({
                 aria-expanded={agentSourcesOpen}
               >
                 <ChevronRight
-                  className={`mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform ${
-                    agentSourcesOpen ? "rotate-90" : ""
-                  }`}
+                  className={`mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform ${agentSourcesOpen ? "rotate-90" : ""
+                    }`}
                   aria-hidden="true"
                 />
                 <span>
@@ -407,9 +408,9 @@ function SemanticSourceSettings({
           )}
 
           {(operationMode !== "agent" || agentSourcesOpen) &&
-          !loading &&
-          !error &&
-          selectedIds.length === 0 ? (
+            !loading &&
+            !error &&
+            selectedIds.length === 0 ? (
             <p className="text-[10px] leading-relaxed text-destructive">
               Selecione ao menos uma fonte para usar a recuperação documental.
             </p>
@@ -561,7 +562,7 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
         description="Escolha a voz, a postura e o estilo predominantes da resposta."
       >
         <div className="space-y-2">
-          <Label>Perfil</Label>
+          {/* <Label>Perfil</Label> */}
           <div className="grid grid-cols-2 gap-2">
             {PROFILES.map((profile) => {
               const selected = (draft.profile ?? DEFAULT_SETTINGS.profile) === profile.id;
@@ -674,7 +675,7 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
         description="Defina a organização e as convenções de apresentação do texto."
       >
         <div className="space-y-2">
-          <Label>Formato da resposta</Label>
+          {/* <Label>Formato da resposta</Label> */}
           <div className="grid grid-cols-2 gap-2">
             {RESPONSE_FORMATS.map((format) => {
               const selected = draft.responseFormat === format.id;
@@ -721,6 +722,37 @@ export function SettingsFields({ value: draft, onChange: setDraft, isAdmin }: Pr
                 setDraft({ ...draft, additionalInstructions: event.target.value })
               }
               placeholder="Acrescente orientações específicas sem substituir os módulos canônicos..."
+            />
+          </div>
+        </SettingsGroup>
+      ) : null}
+
+      {isAdmin ? (
+        <SettingsGroup
+          collapsible
+          defaultOpen={false}
+          icon={Sparkles}
+          title="Perguntas Iniciais"
+          description="Sugestões de perguntas na entrada do ConsBOT."
+        >
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
+            <div>
+              <Label
+                className="cursor-pointer text-[11px] font-medium text-foreground"
+                htmlFor="initial-suggestions-switch"
+              >
+                Pills com perguntas iniciais
+              </Label>
+              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                Gera via LLM e exibe pills de perguntas na tela de entrada. Se desligado, nenhuma chamada à LLM é realizada.
+              </p>
+            </div>
+            <Switch
+              id="initial-suggestions-switch"
+              checked={draft.initialSuggestions ?? false}
+              onCheckedChange={(checked) =>
+                setDraft({ ...draft, initialSuggestions: checked })
+              }
             />
           </div>
         </SettingsGroup>
